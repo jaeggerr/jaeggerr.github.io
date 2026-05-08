@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Small browser-based tools by jaegger. Image-to-SVG converter and a growing collection of micro tools that run entirely in your tab — no backend, no tracking.">
+<title>jaeggerr — small browser tools</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF6F0;
+  --ink: #1A1714;
+  --ink-2: #5C5651;
+  --line: #E6DFD3;
+  --peach: #FF8A5B;
+  --lime: #C9E265;
+  --violet: #B14CFF;
+  --cyan: #20C7E5;
+  --cyan-d: #0F8B9F;
+  --rose: #FF4F8B;
+  --paper: #FFFCF6;
+  --display: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  font-size: 16px;
+  line-height: 1.5;
+}
+a { color: inherit; text-decoration: none; }
+
+.wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 56px 32px 80px;
+}
+
+/* ---------- Header ---------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 56px;
+}
+.brand-mark {
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+}
+.brand-mark b { color: var(--ink); font-weight: 600; }
+.brand-link {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--ink-2);
+  padding-bottom: 1px;
+  transition: color .15s, border-color .15s;
+}
+.brand-link:hover { color: var(--violet); border-color: var(--violet); }
+
+.hero h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(40px, 6.5vw, 84px);
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+  margin: 0 0 24px;
+  max-width: 12ch;
+}
+.hero h1 em {
+  font-style: normal;
+  background: linear-gradient(105deg, var(--peach) 0%, var(--rose) 50%, var(--violet) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.hero p {
+  font-size: 17px;
+  color: var(--ink-2);
+  max-width: 56ch;
+  margin: 0 0 36px;
+  line-height: 1.55;
+}
+.hero-meta {
+  display: flex;
+  gap: 22px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+  flex-wrap: wrap;
+}
+.hero-meta span::before {
+  content: "▸";
+  color: var(--violet);
+  margin-right: 6px;
+}
+
+/* ---------- Filters ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 48px 0 28px;
+  align-items: center;
+}
+.filters-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  margin-right: 8px;
+}
+.chip {
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 14px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform .18s ease, background .18s, color .18s, border-color .18s;
+  user-select: none;
+}
+.chip:hover { transform: translateY(-1px); border-color: var(--ink); }
+.chip[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+  transform: scale(1.04);
+}
+.chip[data-tag="all"][aria-pressed="true"] { background: var(--violet); border-color: var(--violet); }
+
+/* ---------- Bento grid ---------- */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: minmax(220px, auto);
+  gap: 16px;
+}
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 24px;
+  border-radius: 18px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  transition: transform .25s ease, box-shadow .25s ease, opacity .25s ease;
+  isolation: isolate;
+}
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--accent, transparent);
+  opacity: 0;
+  transition: opacity .25s ease;
+  z-index: -1;
+}
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 38px -22px rgba(26,23,20,.25);
+}
+.card:hover .card-arrow { transform: translate(2px, -2px); }
+
+.card.size-hero { grid-column: span 2; grid-row: span 2; padding: 36px; }
+.card.size-wide { grid-column: span 2; }
+
+.card.is-hidden { display: none; }
+
+.card-glyph {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 500;
+  letter-spacing: -0.04em;
+}
+.card.size-hero .card-glyph { width: 84px; height: 84px; font-size: 36px; border-radius: 18px; }
+.card-glyph--svg svg { width: 70%; height: 70%; }
+
+.card-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 22px;
+  letter-spacing: -0.018em;
+  margin: 18px 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.card.size-hero .card-title { font-size: 44px; letter-spacing: -0.03em; line-height: 1; }
+.card-title .num {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--ink-2);
+  letter-spacing: 0.04em;
+}
+.card.size-hero .card-title .num { font-size: 13px; }
+.card-desc {
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.5;
+  max-width: 38ch;
+  margin: 0;
+}
+.card.size-hero .card-desc { font-size: 17px; max-width: 38ch; }
+.card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 16px;
+  gap: 12px;
+}
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.card-tag {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--bg);
+}
+.card-arrow {
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 14px;
+  transition: transform .25s ease;
+  flex-shrink: 0;
+}
+.card.size-hero .card-arrow { display: none; }
+
+/* Per-card accent */
+.card[data-accent="peach"]  { --accent: var(--peach); --accent-bg: #FFEAD9; }
+.card[data-accent="lime"]   { --accent: #6F8D2A;       --accent-bg: #ECF6CC; }
+.card[data-accent="violet"] { --accent: var(--violet); --accent-bg: #F1E1FF; }
+.card[data-accent="cyan"]   { --accent: var(--cyan-d); --accent-bg: #D7F3F8; }
+.card[data-accent="rose"]   { --accent: var(--rose);   --accent-bg: #FFDDE8; }
+.card[data-accent="vectorize"] { --accent: #FF5C39; --accent-bg: #FFE2D6; }
+
+/* Hero gets a tinted gradient instead of plain paper */
+.card.size-hero[data-accent="peach"]  { background: linear-gradient(155deg, #FFEAD9 0%, #FFF4EB 70%, var(--paper) 100%); }
+.card.size-hero[data-accent="violet"] { background: linear-gradient(155deg, #F1E1FF 0%, #F8EFFF 70%, var(--paper) 100%); }
+.card.size-hero[data-accent="cyan"]   { background: linear-gradient(155deg, #D7F3F8 0%, #ECF8FB 70%, var(--paper) 100%); }
+.card.size-hero[data-accent="vectorize"] { background: linear-gradient(155deg, #FFE2D6 0%, #FFF1EA 70%, var(--paper) 100%); }
+
+/* Solo card: shrink the grid so the lone hero doesn't drift in an empty 4-col layout */
+@media (min-width: 521px) {
+  .grid:has(> .card:only-child) {
+    grid-template-columns: repeat(2, 1fr);
+    max-width: 720px;
+  }
+}
+
+/* Hero illustration: bezier trace (inherits the card's accent color) */
+.hero-trace {
+  color: var(--accent);
+  position: absolute;
+  right: 32px;
+  bottom: 32px;
+  width: 200px;
+  height: auto;
+  pointer-events: none;
+}
+
+/* ---------- Footer ---------- */
+
+footer {
+  margin-top: 80px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+footer a { border-bottom: 1px solid var(--ink-2); padding-bottom: 1px; }
+footer a:hover { color: var(--violet); border-color: var(--violet); }
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 920px) {
+  .grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: minmax(220px, auto); }
+  .card.size-hero { grid-column: span 2; grid-row: span 2; }
+  .card.size-wide { grid-column: span 2; }
+  .hero-trace { right: 24px; bottom: 24px; width: 160px; }
+}
+@media (max-width: 520px) {
+  .wrap { padding: 36px 20px 60px; }
+  .grid { grid-template-columns: 1fr; grid-auto-rows: auto; gap: 12px; }
+  .card, .card.size-hero, .card.size-wide { grid-column: span 1; grid-row: span 1; min-height: 200px; }
+  .card.size-hero { min-height: 320px; }
+  .hero h1 { font-size: 44px; }
+  .hero-trace { display: none; }
+  footer { flex-direction: column; gap: 8px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="brand">
+    <div class="brand-mark"><b>jaegger</b> · small browser tools</div>
+    <a class="brand-link" href="https://github.com/jaeggerr" target="_blank" rel="noopener">github →</a>
+  </header>
+
+  <section class="hero">
+    <h1>Tiny tools, <em>built for the tab&nbsp;you're in</em>.</h1>
+    <p>Hi, I'm jaeggerr — I build small tools for fun. Everything here runs locally in your tab, no backend, no tracking.</p>
+    <div class="hero-meta">
+      <span>0 bytes uploaded</span>
+      <span>open source</span>
+    </div>
+  </section>
+
+  <nav class="filters" id="filters" aria-label="Filter projects by tag">
+    <span class="filters-label">filter</span>
+    <button class="chip" data-tag="all" aria-pressed="true">All</button>
+    <button class="chip" data-tag="image" aria-pressed="false">image</button>
+    <button class="chip" data-tag="design" aria-pressed="false">design</button>
+  </nav>
+
+  <main class="grid" id="grid">
+
+    <a class="card size-hero" data-accent="vectorize" data-tags="design,image" href="./tools/vectorize/" target="_blank" rel="noopener">
+      <div>
+        <div class="card-glyph card-glyph--svg">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M3 4L12 20L21 4" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
+            <circle cx="3" cy="4" r="2" fill="currentColor"/>
+            <circle cx="12" cy="20" r="2" fill="currentColor"/>
+            <circle cx="21" cy="4" r="2" fill="currentColor"/>
+          </svg>
+        </div>
+        <h2 class="card-title">vectorize</h2>
+        <p class="card-desc">Drop an image, get an SVG. Tweak every anchor point and Bézier handle until the path is exactly right — no Illustrator, no upload, just your tab.</p>
+      </div>
+      <div class="card-foot">
+        <div class="card-tags">
+          <span class="card-tag">design</span>
+          <span class="card-tag">image</span>
+        </div>
+      </div>
+      <svg class="hero-trace" viewBox="0 0 220 130" fill="none" aria-hidden="true">
+        <path d="M 22 100 C 60 10, 150 120, 200 36" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="22" y1="100" x2="60" y2="10" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+        <line x1="200" y1="36" x2="150" y2="120" stroke="currentColor" stroke-width="1" stroke-dasharray="3 3" opacity="0.4"/>
+        <rect x="16" y="94" width="12" height="12" fill="currentColor"/>
+        <rect x="194" y="30" width="12" height="12" fill="currentColor"/>
+        <circle cx="60" cy="10" r="4.5" fill="white" stroke="currentColor" stroke-width="1.5"/>
+        <circle cx="150" cy="120" r="4.5" fill="white" stroke="currentColor" stroke-width="1.5"/>
+      </svg>
+    </a>
+
+  </main>
+
+  <footer>
+    <span>© 2026 jaeggerr </span>
+    <a href="https://github.com/jaeggerr/jaeggerr.github.io" target="_blank" rel="noopener">view source on GitHub</a>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  const filters = document.getElementById('filters');
+  const grid = document.getElementById('grid');
+  const chips = filters.querySelectorAll('.chip');
+  const cards = grid.querySelectorAll('.card');
+
+  filters.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    const tag = chip.dataset.tag;
+    chips.forEach(c => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
+    cards.forEach(card => {
+      const tags = (card.dataset.tags || '').split(',');
+      const show = tag === 'all' || tags.includes(tag);
+      card.classList.toggle('is-hidden', !show);
+    });
+  });
+})();
+</script>
+
+</body>
+</html>
