@@ -644,6 +644,7 @@ input, select { font: inherit; color: inherit; }
 }
 .toggle.exclude-off::after { background: var(--ink); }
 
+
 /* ============ STATUS BAR ============ */
 .statusbar {
   display: flex;
@@ -707,6 +708,10 @@ input, select { font: inherit; color: inherit; }
       <button class="btn" id="replaceBtn">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
         <span id="replaceLabel">Open image</span>
+      </button>
+      <button class="btn" id="downloadOneBtn" title="Download just the selected sprite" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span id="downloadOneLabel">Download .png</span> <span class="kbd">D</span>
       </button>
       <button class="btn primary" id="exportBtn" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
@@ -1190,6 +1195,8 @@ function renderInspector() {
   const pill = $('spritePill');
   const idxEl = $('spriteIndex');
 
+  updateDownloadOneBtn();
+
   if (!sel) {
     body.innerHTML = `<div class="empty-inspector">${state.image ? 'No sprite selected. Click any rectangle on the canvas.' : 'Drop an image to begin.'}</div>`;
     pill.textContent = 'none';
@@ -1264,6 +1271,23 @@ function toggleExcluded(sel) {
   renderHeader();
 }
 
+function updateDownloadOneBtn() {
+  const btn = $('downloadOneBtn');
+  const lbl = $('downloadOneLabel');
+  if (!btn || !lbl) return;
+  const sel = state.sprites.find(s => s.id === state.selectedId);
+  if (!sel) {
+    btn.disabled = true;
+    btn.removeAttribute('title');
+    lbl.textContent = 'Download .png';
+    return;
+  }
+  btn.disabled = false;
+  const name = (finalFilename(sel) || 'unnamed') + '.png';
+  btn.title = 'Download ' + name;
+  lbl.textContent = 'Download .png';
+}
+
 function drawPreview(sel) {
   const canvas = $('previewCanvas');
   if (!canvas) return;
@@ -1286,6 +1310,7 @@ function updateFnamePreview() {
   if (!sel) return;
   const wrap = document.querySelector('.fname');
   if (wrap) wrap.innerHTML = renderFnameHtml(sel);
+  updateDownloadOneBtn();
 }
 
 function updateSelectedLabel() {
@@ -1334,6 +1359,33 @@ function setStatus(kind, text) {
 // ===================================================================
 // Export ZIP
 // ===================================================================
+
+async function exportSingleSprite(sel) {
+  if (!sel || !state.image) return;
+  const padding = state.padding;
+  const w = sel.w + padding * 2;
+  const h = sel.h + padding * 2;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(state.image, sel.x, sel.y, sel.w, sel.h, padding, padding, sel.w, sel.h);
+
+  let base = finalFilename(sel) || 'sprite_' + sel.id;
+  base = base.replace(/[\\/:*?"<>|]/g, '_').trim() || 'sprite';
+
+  const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = base + '.png';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  setStatus('ready', `downloaded ${base}.png`);
+}
 
 async function exportZip() {
   if (!state.image || !state.sprites.length) return;
@@ -1477,6 +1529,10 @@ function init() {
   $('reDetectBtn').addEventListener('click', () => runDetection());
   $('exportBtn').addEventListener('click', exportZip);
   $('zoomBtn').addEventListener('click', cycleZoom);
+  $('downloadOneBtn').addEventListener('click', () => {
+    const sel = state.sprites.find(s => s.id === state.selectedId);
+    if (sel) exportSingleSprite(sel);
+  });
 
   // Keyboard
   document.addEventListener('keydown', (e) => {
@@ -1501,6 +1557,12 @@ function init() {
       e.preventDefault();
       const sel = state.sprites.find(s => s.id === state.selectedId);
       toggleExcluded(sel);
+      return;
+    }
+    if ((e.key === 'd' || e.key === 'D') && state.selectedId != null) {
+      e.preventDefault();
+      const sel = state.sprites.find(s => s.id === state.selectedId);
+      exportSingleSprite(sel);
       return;
     }
     if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && state.sprites.length) {
