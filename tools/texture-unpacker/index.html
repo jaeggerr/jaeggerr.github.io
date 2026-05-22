@@ -1,0 +1,1527 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Texture Unpacker · jaeggerr</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='3' width='8' height='8' rx='1' fill='%23FF9F6B'/%3E%3Crect x='13' y='3' width='8' height='8' rx='1' fill='%23BEFF6C'/%3E%3Crect x='3' y='13' width='8' height='8' rx='1' fill='%23B49EFF'/%3E%3Crect x='13' y='13' width='8' height='8' rx='1' fill='%236EE5FF'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --cream: #FAF6F0;
+  --cream-2: #F4EFE6;
+  --paper: #FFFFFF;
+  --ink: #1a1a1a;
+  --ink-2: #5a5a5a;
+  --ink-3: #8a8a8a;
+  --ink-4: #b8b3a8;
+  --line: #E7E1D4;
+  --line-strong: #D6CFBF;
+
+  --peach: #FF9F6B;
+  --lime:  #BEFF6C;
+  --violet:#B49EFF;
+  --cyan:  #6EE5FF;
+  --rose:  #FF8DB4;
+
+  --damier-a: #FFFFFF;
+  --damier-b: #EDE7DA;
+
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --sans: 'Space Grotesk', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+
+.app {
+  display: grid;
+  grid-template-rows: 60px 1fr 32px;
+  height: 100vh;
+}
+
+/* ============ TOP BAR ============ */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 24px;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--cream);
+}
+.brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+.brand-mark {
+  width: 32px; height: 32px;
+  display: block;
+  flex-shrink: 0;
+}
+.brand-text { display: flex; flex-direction: column; gap: 0; }
+.brand-text .a {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+}
+.brand-text .a a { color: inherit; text-decoration: none; border-bottom: 1px dotted var(--ink-4); }
+.brand-text .b {
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  max-width: 520px;
+}
+.file-info b { color: var(--ink); font-weight: 500; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+.file-info .sep { color: var(--ink-4); }
+.file-info .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 2px rgba(190,255,108,0.3); flex-shrink: 0; }
+.file-info .dot.idle { background: var(--ink-4); box-shadow: none; }
+
+.top-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
+
+.btn {
+  height: 36px;
+  padding: 0 16px;
+  border-radius: 10px;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  color: var(--ink);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s;
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 -2px rgba(0,0,0,0.08); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn svg { width: 14px; height: 14px; stroke-width: 1.8; }
+.btn .kbd {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  background: var(--cream-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.btn.primary {
+  background: var(--ink);
+  color: var(--cream);
+  border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--peach);
+}
+.btn.primary:hover:not(:disabled) { box-shadow: 0 4px 0 var(--peach); transform: translateY(-2px); }
+.btn.primary:disabled { box-shadow: none; }
+.btn.primary .kbd { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+.btn.icon-only { padding: 0; width: 36px; justify-content: center; }
+
+/* ============ MAIN ============ */
+.main {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  overflow: hidden;
+  gap: 0;
+  min-height: 0;
+}
+
+/* ----- canvas area ----- */
+.canvas-area {
+  position: relative;
+  background: var(--cream);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 18px 20px 20px 24px;
+  gap: 14px;
+  min-width: 0;
+}
+
+.canvas-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.canvas-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.canvas-title h2 { margin: 0; font-family: var(--sans); font-weight: 600; font-size: 22px; letter-spacing: -0.02em; }
+.canvas-title .sub { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+.canvas-title .num {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--lime);
+  color: var(--ink);
+  padding: 3px 10px;
+  border-radius: 6px;
+  letter-spacing: 0;
+}
+.canvas-title .num.idle { background: var(--cream-2); color: var(--ink-3); }
+.canvas-title .num.busy { background: var(--peach); color: var(--ink); }
+
+.canvas-toolbar { display: flex; align-items: center; gap: 6px; }
+.toolchip {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.toolchip:hover { border-color: var(--line-strong); color: var(--ink); }
+.toolchip svg { width: 13px; height: 13px; stroke-width: 1.8; }
+.toolchip.active { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+.toolchip b { font-weight: 500; }
+
+.canvas-frame {
+  flex: 1;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  position: relative;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 24px 50px -30px rgba(0,0,0,0.15);
+  min-height: 0;
+}
+.canvas-frame.drag-over {
+  border-color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 0 0 3px rgba(180,158,255,0.35), 0 24px 50px -30px rgba(0,0,0,0.15);
+}
+
+/* empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 60px 40px;
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+.empty .mark {
+  width: 72px; height: 72px;
+  border-radius: 16px;
+  background:
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%),
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  background-color: var(--damier-a);
+  border: 1px solid var(--line);
+  position: relative;
+}
+.empty .mark::before, .empty .mark::after {
+  content: "";
+  position: absolute;
+  border: 1.5px dashed var(--ink);
+  border-radius: 4px;
+}
+.empty .mark::before { top: 10px; left: 10px; width: 22px; height: 22px; }
+.empty .mark::after { bottom: 10px; right: 10px; width: 28px; height: 28px; border-color: var(--peach); }
+.empty h3 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; }
+.empty p { margin: 0; color: var(--ink-2); font-size: 14.5px; max-width: 44ch; }
+.empty .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.empty .accepts {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  margin-top: -4px;
+}
+.empty .accepts code {
+  background: var(--cream-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--ink-2);
+}
+.drop-hint {
+  display: none;
+  position: absolute;
+  inset: 18px;
+  border: 2px dashed var(--ink);
+  border-radius: 12px;
+  background: rgba(180,158,255,0.08);
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 22px;
+  color: var(--ink);
+}
+.canvas-frame.drag-over .drop-hint { display: flex; }
+
+/* stage = scaled wrapper. artboard = native size. */
+.stage { position: relative; }
+.artboard {
+  position: relative;
+  transform-origin: top left;
+  background-image:
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%),
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 8px 8px;
+  background-color: var(--damier-a);
+  box-shadow: 0 0 0 1px var(--line-strong), 0 16px 40px -16px rgba(0,0,0,0.12);
+  border-radius: 6px;
+}
+.artboard canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+}
+
+.sprite {
+  position: absolute;
+  border: 1.5px solid var(--sc);
+  border-radius: 4px;
+  cursor: pointer;
+  --sc: var(--peach);
+}
+.sprite::before {
+  content: attr(data-n);
+  position: absolute;
+  top: -10px; left: -2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--sc);
+  padding: 1px 6px;
+  border-radius: 5px;
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+.sprite:hover { box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 22%, transparent); }
+.sprite.selected {
+  border: 2px dashed var(--ink);
+  --sc: var(--ink);
+  box-shadow: 0 0 0 5px rgba(190,255,108,0.4);
+}
+.sprite.selected::before { background: var(--ink); color: var(--lime); }
+.sprite.selected::after {
+  content: attr(data-name);
+  position: absolute;
+  bottom: -22px; left: -2px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--lime);
+  padding: 2px 8px;
+  border-radius: 5px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.sprite.excluded {
+  opacity: 0.42;
+  border-style: dashed;
+  border-color: var(--ink-3) !important;
+  --sc: var(--ink-3);
+}
+.sprite.excluded::before {
+  background: var(--ink-3) !important;
+  color: var(--paper) !important;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+.sprite.excluded.selected { opacity: 0.75; border-color: var(--ink) !important; }
+.sprite.excluded.selected::after {
+  background: var(--ink-3);
+  color: var(--paper);
+}
+
+.canvas-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  padding: 0 4px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.canvas-foot .legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.legend-item { display: inline-flex; align-items: center; gap: 5px; }
+.legend-sw { width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+.canvas-foot .legend-note { color: var(--ink-4); }
+
+/* ----- inspector ----- */
+.inspector {
+  background: var(--cream);
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 18px 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+}
+
+.card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.card.dim { opacity: 0.5; }
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  gap: 8px;
+}
+.card-head h3 {
+  margin: 0;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.card-head h3 .dotn {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+  background: var(--cream-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.card-head .pill {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  background: var(--cream-2);
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.card-head .pill.ok { color: #1a1a1a; background: var(--lime); }
+
+.card-body {
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-2);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.field-label .hint { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+.input, .select {
+  height: 36px;
+  width: 100%;
+  background: var(--cream-2);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+  transition: background .12s, border-color .12s;
+}
+.input:focus, .select:focus { background: var(--paper); border-color: var(--ink); }
+.input::placeholder { color: var(--ink-4); }
+.input.named { color: var(--ink); font-weight: 500; }
+.row-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* slider */
+.slider { display: flex; align-items: center; gap: 10px; }
+.slider .range {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--cream-2);
+  border-radius: 999px;
+  outline: none;
+}
+.slider .range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.slider .range::-moz-range-thumb {
+  width: 14px; height: 14px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.slider .num {
+  min-width: 60px;
+  height: 28px;
+  background: var(--cream-2);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 8px;
+}
+.slider .num .unit { color: var(--ink-3); font-weight: 400; margin-left: 3px; font-size: 10.5px; }
+
+/* toggle */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--cream-2);
+  border-radius: 10px;
+  gap: 12px;
+}
+.toggle-row .lbl { display: flex; flex-direction: column; gap: 1px; }
+.toggle-row .lbl b { font-size: 13px; font-weight: 500; color: var(--ink); }
+.toggle-row .lbl span { font-size: 11.5px; color: var(--ink-3); font-family: var(--mono); }
+.toggle {
+  position: relative;
+  width: 36px; height: 22px;
+  background: var(--ink);
+  border-radius: 999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 3px; left: 17px;
+  width: 16px; height: 16px;
+  background: var(--lime);
+  border-radius: 50%;
+  transition: left .15s, background .15s;
+}
+.toggle.off { background: var(--line-strong); }
+.toggle.off::after { left: 3px; background: var(--paper); }
+
+/* sprite preview */
+.preview-block {
+  background-image:
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%),
+    linear-gradient(45deg, var(--damier-b) 25%, transparent 25%, transparent 75%, var(--damier-b) 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 6px 6px;
+  background-color: var(--damier-a);
+  border-radius: 10px;
+  height: 130px;
+  display: grid;
+  place-items: center;
+  position: relative;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+.preview-block canvas {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  display: block;
+}
+.preview-block .zoom {
+  position: absolute;
+  top: 8px; right: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink);
+  background: var(--paper);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+/* meta */
+.meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.meta-cell { background: var(--cream-2); padding: 10px 12px; border-radius: 8px; }
+.meta-cell .k { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); letter-spacing: 0.04em; text-transform: uppercase; }
+.meta-cell .v { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--ink); margin-top: 2px; }
+.meta-cell .v .u { color: var(--ink-3); font-size: 11px; margin-left: 2px; font-weight: 400; }
+
+/* filename */
+.fname {
+  background: var(--cream-2);
+  border-radius: 8px;
+  padding: 11px 14px;
+  font-family: var(--mono);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex-wrap: wrap;
+  word-break: break-all;
+}
+.fname .pre { color: var(--peach); font-weight: 600; }
+.fname .suf { color: var(--violet); font-weight: 600; }
+.fname .core { color: var(--ink); font-weight: 500; }
+.fname .core.placeholder { color: var(--ink-3); font-style: italic; }
+.fname .ext { color: var(--ink-3); }
+
+/* empty inspector message */
+.empty-inspector {
+  padding: 18px 16px;
+  text-align: center;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+/* dim the rest of the sprite body when the sprite is excluded */
+.sprite-body.is-excluded > .field,
+.sprite-body.is-excluded > .toggle-row.affix-toggle,
+.sprite-body.is-excluded > .preview-block,
+.sprite-body.is-excluded > .meta-grid {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* the include toggle has a peach accent when "excluded" (off) so it stands out */
+.toggle.exclude-off {
+  background: var(--peach);
+}
+.toggle.exclude-off::after { background: var(--ink); }
+
+/* ============ STATUS BAR ============ */
+.statusbar {
+  display: flex;
+  align-items: center;
+  background: var(--cream-2);
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  padding: 0 18px;
+  gap: 14px;
+}
+.statusbar b { color: var(--ink); font-weight: 500; }
+.statusbar .spacer { flex: 1; }
+.statusbar a { color: var(--ink-2); border-bottom: 1px dotted var(--ink-4); padding-bottom: 1px; text-decoration: none; }
+.statusbar a:hover { color: var(--ink); }
+.statusbar .pulse {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 3px rgba(190,255,108,0.3);
+}
+.statusbar .pulse.idle { background: var(--ink-4); box-shadow: none; }
+.statusbar .pulse.busy { background: var(--peach); box-shadow: 0 0 0 3px rgba(255,159,107,0.3); }
+.statusbar .seg { display: inline-flex; align-items: center; gap: 7px; }
+
+/* sr-only file input */
+.hidden-input { position: absolute; left: -9999px; opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <a class="brand" href="../../index.html">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3"  y="3"  width="8" height="8" rx="1.5" fill="#FF9F6B"/>
+        <rect x="13" y="3"  width="8" height="8" rx="1.5" fill="#BEFF6C"/>
+        <rect x="3"  y="13" width="8" height="8" rx="1.5" fill="#B49EFF"/>
+        <rect x="13" y="13" width="8" height="8" rx="1.5" fill="#6EE5FF"/>
+      </svg>
+      <div class="brand-text">
+        <span class="a">jaeggerr.github.io / tools /</span>
+        <span class="b">Texture Unpacker</span>
+      </div>
+    </a>
+
+    <div class="file-info" id="fileInfo">
+      <span class="dot idle"></span>
+      <b>no file loaded</b>
+      <span class="sep">·</span>
+      <span>drop a PNG anywhere</span>
+    </div>
+
+    <div class="top-actions">
+      <button class="btn icon-only" id="reDetectBtn" title="Re-run detection" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      </button>
+      <button class="btn" id="replaceBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span id="replaceLabel">Open image</span>
+      </button>
+      <button class="btn primary" id="exportBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        <span id="exportLabel">Export ZIP</span> <span class="kbd">⌘E</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+
+    <!-- canvas area -->
+    <div class="canvas-area">
+
+      <div class="canvas-header">
+        <div class="canvas-title">
+          <h2>Detected sprites</h2>
+          <span class="num idle" id="countBadge">— none</span>
+          <span class="sub" id="hintLine">drop a transparent PNG to start</span>
+        </div>
+        <div class="canvas-toolbar">
+          <button class="toolchip" id="zoomBtn" title="Cycle zoom">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+            zoom <b id="zoomLabel">fit</b>
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-frame" id="canvasFrame">
+        <div class="drop-hint">drop image here</div>
+
+        <!-- empty state -->
+        <div class="empty" id="emptyState">
+          <div class="mark"></div>
+          <h3>Drop a sprite sheet</h3>
+          <p>Any image with transparent gaps between sprites works — PNG, WebP, GIF, AVIF. Detection runs in your tab, on your CPU. Nothing leaves your machine.</p>
+          <div class="actions">
+            <button class="btn primary" id="openFromEmpty">Choose a file</button>
+            <span class="accepts"><code>png</code> · <code>webp</code> · <code>gif</code> · <code>avif</code></span>
+          </div>
+        </div>
+
+        <!-- artboard (hidden until image loaded) -->
+        <div class="stage" id="stage" style="display:none;">
+          <div class="artboard" id="artboard">
+            <canvas id="atlasCanvas"></canvas>
+            <div id="overlays"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="canvas-foot">
+        <div class="legend">
+          <span class="legend-item"><span class="legend-sw" style="--c: var(--peach)"></span>peach</span>
+          <span class="legend-item"><span class="legend-sw" style="--c: var(--lime)"></span>lime</span>
+          <span class="legend-item"><span class="legend-sw" style="--c: var(--violet)"></span>violet</span>
+          <span class="legend-item"><span class="legend-sw" style="--c: var(--cyan)"></span>cyan</span>
+          <span class="legend-item"><span class="legend-sw" style="--c: var(--rose)"></span>rose</span>
+          <span class="legend-note">— rotates per sprite, decorative only</span>
+        </div>
+        <span id="artboardDim">—</span>
+      </div>
+
+    </div>
+
+    <!-- inspector -->
+    <div class="inspector">
+
+      <!-- global -->
+      <div class="card">
+        <div class="card-head">
+          <h3>Global <span class="dotn">naming</span></h3>
+          <span class="pill" id="globalPill">0 ready</span>
+        </div>
+        <div class="card-body">
+          <div class="row-pair">
+            <div class="field">
+              <div class="field-label">Prefix</div>
+              <input class="input" id="prefixInput" placeholder="mob_">
+            </div>
+            <div class="field">
+              <div class="field-label">Suffix</div>
+              <input class="input" id="suffixInput" placeholder="_v1">
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">
+              Auto-name pattern
+              <span class="hint">for un-named sprites</span>
+            </div>
+            <input class="input" id="patternInput" value="sprite_%03d">
+          </div>
+        </div>
+      </div>
+
+      <!-- detection -->
+      <div class="card">
+        <div class="card-head">
+          <h3>Detection <span class="dotn">thresholds</span></h3>
+          <span class="pill" id="detectionPill">idle</span>
+        </div>
+        <div class="card-body">
+          <div class="field">
+            <div class="field-label">Alpha threshold <span class="hint">0 → 255</span></div>
+            <div class="slider">
+              <input type="range" class="range" id="alphaSlider" min="1" max="255" value="128">
+              <span class="num"><span id="alphaVal">128</span><span class="unit">α</span></span>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">Min sprite size <span class="hint">drops blobs &lt; N px</span></div>
+            <div class="slider">
+              <input type="range" class="range" id="minSizeSlider" min="1" max="200" value="8">
+              <span class="num"><span id="minSizeVal">8</span><span class="unit">px</span></span>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label">Export padding <span class="hint">transparent margin</span></div>
+            <div class="slider">
+              <input type="range" class="range" id="paddingSlider" min="0" max="32" value="0">
+              <span class="num"><span id="paddingVal">0</span><span class="unit">px</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- selected sprite -->
+      <div class="card" id="spriteCard">
+        <div class="card-head">
+          <h3>Sprite <span class="dotn" id="spriteIndex">—</span></h3>
+          <span class="pill" id="spritePill">none</span>
+        </div>
+        <div class="card-body" id="spriteBody">
+          <div class="empty-inspector">No sprite selected. Click any rectangle on the canvas.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ STATUS BAR ============ -->
+  <div class="statusbar">
+    <span class="seg"><span class="pulse idle" id="statusPulse"></span> <b id="statusText">idle</b></span>
+    <span class="spacer"></span>
+    <span>runs in your tab · no upload · no tracking</span>
+    <span>·</span>
+    <a href="../../index.html">← back to jaeggerr.github.io</a>
+  </div>
+
+  <input type="file" id="fileInput" class="hidden-input" accept="image/png,image/webp,image/gif,image/avif,image/jpeg">
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+
+const ACCENTS = ['peach', 'lime', 'violet', 'cyan', 'rose'];
+const ACCENT_VARS = {
+  peach: 'var(--peach)', lime: 'var(--lime)', violet: 'var(--violet)',
+  cyan: 'var(--cyan)', rose: 'var(--rose)',
+};
+
+const state = {
+  image: null,
+  imageData: null,
+  fileName: '',
+  fileSize: 0,
+  sprites: [],
+  selectedId: null,
+  prefix: '',
+  suffix: '',
+  pattern: 'sprite_%03d',
+  alphaThreshold: 128,
+  minSize: 8,
+  padding: 0,
+  zoom: 'fit', // 'fit' | 0.5 | 1 | 2 | 4
+  status: 'idle',
+};
+
+// ===================================================================
+// File loading
+// ===================================================================
+
+function openFile(file) {
+  if (!file) return;
+  state.fileName = file.name;
+  state.fileSize = file.size;
+  setStatus('loading', 'loading image…');
+
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    // draw to offscreen canvas to get ImageData
+    const off = document.createElement('canvas');
+    off.width = img.naturalWidth;
+    off.height = img.naturalHeight;
+    const octx = off.getContext('2d', { willReadFrequently: true });
+    octx.drawImage(img, 0, 0);
+    state.image = img;
+    state.imageData = octx.getImageData(0, 0, off.width, off.height);
+    drawAtlas();
+    runDetection();
+    fitZoom();
+  };
+  img.onerror = () => {
+    setStatus('error', 'failed to load image');
+    URL.revokeObjectURL(url);
+  };
+  img.src = url;
+}
+
+function drawAtlas() {
+  const canvas = $('atlasCanvas');
+  canvas.width = state.image.naturalWidth;
+  canvas.height = state.image.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(state.image, 0, 0);
+  $('artboard').style.width = canvas.width + 'px';
+  $('artboard').style.height = canvas.height + 'px';
+}
+
+// ===================================================================
+// Sprite detection (8-connected components on alpha)
+// ===================================================================
+
+function runDetection() {
+  if (!state.imageData) return;
+  setStatus('busy', 'detecting sprites…');
+  $('detectionPill').textContent = 'running…';
+
+  setTimeout(() => {
+    const t0 = performance.now();
+    const raw = floodFill(state.imageData, state.alphaThreshold);
+    const minS = state.minSize;
+    const filtered = raw.filter(b => Math.max(b.w, b.h) >= minS);
+
+    const prevByKey = new Map(state.sprites.map(s => [`${s.x},${s.y}`, s]));
+    state.sprites = filtered.map((b, i) => {
+      const prev = prevByKey.get(`${b.x},${b.y}`);
+      return {
+        id: i + 1,
+        x: b.x, y: b.y, w: b.w, h: b.h,
+        count: b.count,
+        avgAlpha: b.sumAlpha / b.count / 255,
+        name: prev?.name ?? '',
+        applyAffixes: prev?.applyAffixes ?? true,
+        excluded: prev?.excluded ?? false,
+      };
+    });
+
+    if (!state.sprites.find(s => s.id === state.selectedId)) {
+      state.selectedId = state.sprites[0]?.id ?? null;
+    }
+
+    const t1 = performance.now();
+    setStatus('ready', `detected ${state.sprites.length} sprites in ${Math.round(t1 - t0)}ms`);
+    $('detectionPill').textContent = state.sprites.length ? 'live' : 'none';
+    renderAll();
+  }, 16);
+}
+
+function floodFill(imageData, alphaThreshold) {
+  const { data, width, height } = imageData;
+  const visited = new Uint8Array(width * height);
+  const bboxes = [];
+
+  // pre-extract alpha array for speed
+  const alpha = new Uint8Array(width * height);
+  for (let i = 0; i < alpha.length; i++) alpha[i] = data[i * 4 + 3];
+
+  const stack = new Int32Array(width * height); // reusable
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+      if (visited[idx]) continue;
+      if (alpha[idx] < alphaThreshold) { visited[idx] = 1; continue; }
+
+      let sp = 0;
+      stack[sp++] = idx;
+      visited[idx] = 1;
+
+      let minX = x, minY = y, maxX = x, maxY = y;
+      let count = 0, sumAlpha = 0;
+
+      while (sp > 0) {
+        const ci = stack[--sp];
+        const cy = (ci / width) | 0;
+        const cx = ci - cy * width;
+        count++;
+        sumAlpha += alpha[ci];
+        if (cx < minX) minX = cx;
+        if (cy < minY) minY = cy;
+        if (cx > maxX) maxX = cx;
+        if (cy > maxY) maxY = cy;
+
+        // 8 neighbors
+        for (let dy = -1; dy <= 1; dy++) {
+          const ny = cy + dy;
+          if (ny < 0 || ny >= height) continue;
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const nx = cx + dx;
+            if (nx < 0 || nx >= width) continue;
+            const ni = ny * width + nx;
+            if (visited[ni]) continue;
+            if (alpha[ni] < alphaThreshold) { visited[ni] = 1; continue; }
+            visited[ni] = 1;
+            stack[sp++] = ni;
+          }
+        }
+      }
+
+      bboxes.push({
+        x: minX, y: minY,
+        w: maxX - minX + 1,
+        h: maxY - minY + 1,
+        count, sumAlpha,
+      });
+    }
+  }
+
+  // Sort by reading order (top-left → bottom-right) for stable numbering
+  bboxes.sort((a, b) => {
+    const rowA = Math.floor(a.y / 8);
+    const rowB = Math.floor(b.y / 8);
+    if (rowA !== rowB) return a.y - b.y;
+    return a.x - b.x;
+  });
+
+  return bboxes;
+}
+
+// ===================================================================
+// Zoom
+// ===================================================================
+
+function fitZoom() {
+  if (!state.image) return;
+  const frame = $('canvasFrame');
+  const pad = 36;
+  const availW = frame.clientWidth - pad;
+  const availH = frame.clientHeight - pad;
+  const sx = availW / state.image.naturalWidth;
+  const sy = availH / state.image.naturalHeight;
+  const s = Math.min(sx, sy, 4);
+  applyZoom(s, 'fit');
+}
+
+function applyZoom(scale, label) {
+  if (!state.image) return;
+  state.zoom = label;
+  const w = state.image.naturalWidth * scale;
+  const h = state.image.naturalHeight * scale;
+  const stage = $('stage');
+  stage.style.width = w + 'px';
+  stage.style.height = h + 'px';
+  $('artboard').style.transform = `scale(${scale})`;
+  $('zoomLabel').textContent = (label === 'fit') ? 'fit' : Math.round(scale * 100) + '%';
+}
+
+function cycleZoom() {
+  if (!state.image) return;
+  const cycle = ['fit', 0.5, 1, 2, 4];
+  const i = cycle.indexOf(state.zoom);
+  const next = cycle[(i + 1) % cycle.length];
+  if (next === 'fit') fitZoom();
+  else applyZoom(next, next);
+}
+
+// ===================================================================
+// Rendering
+// ===================================================================
+
+function renderAll() {
+  renderStage();
+  renderOverlays();
+  renderInspector();
+  renderHeader();
+  renderFileInfo();
+}
+
+function renderStage() {
+  const hasImage = !!state.image;
+  $('emptyState').style.display = hasImage ? 'none' : 'flex';
+  $('stage').style.display = hasImage ? 'block' : 'none';
+  $('replaceLabel').textContent = hasImage ? 'Replace image' : 'Open image';
+  $('reDetectBtn').disabled = !hasImage;
+  if (hasImage) {
+    $('artboardDim').textContent = `artboard ${state.image.naturalWidth} × ${state.image.naturalHeight}`;
+  } else {
+    $('artboardDim').textContent = '—';
+  }
+}
+
+function renderOverlays() {
+  const root = $('overlays');
+  root.innerHTML = '';
+  for (let i = 0; i < state.sprites.length; i++) {
+    const s = state.sprites[i];
+    const div = document.createElement('div');
+    div.className = 'sprite' + (s.id === state.selectedId ? ' selected' : '') + (s.excluded ? ' excluded' : '');
+    const accentName = ACCENTS[i % ACCENTS.length];
+    div.style.setProperty('--sc', ACCENT_VARS[accentName]);
+    div.style.left = s.x + 'px';
+    div.style.top = s.y + 'px';
+    div.style.width = s.w + 'px';
+    div.style.height = s.h + 'px';
+    div.setAttribute('data-n', String(s.id).padStart(2, '0'));
+    if (s.id === state.selectedId) {
+      div.setAttribute('data-name', s.excluded ? 'excluded' : (finalFilename(s) || 'unnamed'));
+    }
+    div.addEventListener('click', () => {
+      state.selectedId = s.id;
+      renderOverlays();
+      renderInspector();
+    });
+    root.appendChild(div);
+  }
+}
+
+function renderHeader() {
+  const badge = $('countBadge');
+  const n = state.sprites.length;
+  const included = state.sprites.filter(s => !s.excluded).length;
+  if (!state.image) {
+    badge.textContent = '— none';
+    badge.className = 'num idle';
+    $('hintLine').textContent = 'drop a transparent PNG to start';
+  } else if (state.status === 'busy') {
+    badge.textContent = 'detecting…';
+    badge.className = 'num busy';
+    $('hintLine').textContent = 'analyzing pixels';
+  } else {
+    badge.textContent = (included === n) ? (n + ' found') : (included + ' of ' + n + ' ready');
+    badge.className = 'num';
+    $('hintLine').textContent = n
+      ? 'click any rectangle to inspect · drag a slider to refine · X to exclude'
+      : 'no sprites found — try lowering alpha threshold or min size';
+  }
+  const pill = $('globalPill');
+  pill.textContent = (included === n) ? `${n} ready` : `${included} of ${n} ready`;
+  pill.className = 'pill' + (included ? ' ok' : '');
+
+  // Export button label + state
+  const exportLabel = $('exportLabel');
+  if (!state.image || n === 0) {
+    exportLabel.textContent = 'Export ZIP';
+  } else if (included === n) {
+    exportLabel.textContent = `Export ${n} · ZIP`;
+  } else {
+    exportLabel.textContent = `Export ${included} of ${n} · ZIP`;
+  }
+  $('exportBtn').disabled = !state.image || included === 0;
+}
+
+function renderFileInfo() {
+  const fi = $('fileInfo');
+  if (!state.image) {
+    fi.innerHTML = `<span class="dot idle"></span><b>no file loaded</b><span class="sep">·</span><span>drop a PNG anywhere</span>`;
+    return;
+  }
+  const w = state.image.naturalWidth;
+  const h = state.image.naturalHeight;
+  const kb = (state.fileSize / 1024).toFixed(1);
+  fi.innerHTML = `
+    <span class="dot"></span>
+    <b title="${escapeHtml(state.fileName)}">${escapeHtml(state.fileName)}</b>
+    <span class="sep">·</span><span>${w}×${h}</span>
+    <span class="sep">·</span><span>${kb} KB</span>
+  `;
+}
+
+function renderInspector() {
+  const sel = state.sprites.find(s => s.id === state.selectedId);
+  const body = $('spriteBody');
+  const pill = $('spritePill');
+  const idxEl = $('spriteIndex');
+
+  if (!sel) {
+    body.innerHTML = `<div class="empty-inspector">${state.image ? 'No sprite selected. Click any rectangle on the canvas.' : 'Drop an image to begin.'}</div>`;
+    pill.textContent = 'none';
+    pill.className = 'pill';
+    idxEl.textContent = '—';
+    return;
+  }
+
+  pill.textContent = sel.excluded ? 'excluded' : 'selected';
+  pill.className = 'pill' + (sel.excluded ? '' : ' ok');
+  idxEl.textContent = '#' + String(sel.id).padStart(2, '0');
+
+  body.className = 'card-body sprite-body' + (sel.excluded ? ' is-excluded' : '');
+  body.innerHTML = `
+    <div class="toggle-row include-toggle">
+      <div class="lbl">
+        <b>Include in export</b>
+        <span>${sel.excluded ? 'this sprite will be skipped' : 'press X to toggle'}</span>
+      </div>
+      <div class="toggle ${sel.excluded ? 'off exclude-off' : ''}" id="includeToggle" role="switch" tabindex="0" aria-checked="${!sel.excluded}"></div>
+    </div>
+    <div class="preview-block">
+      <span class="zoom" id="previewZoom">×1</span>
+      <canvas id="previewCanvas"></canvas>
+    </div>
+    <div class="field">
+      <div class="field-label">Name</div>
+      <input class="input ${sel.name ? 'named' : ''}" id="nameInput" value="${escapeAttr(sel.name)}" placeholder="${escapeAttr(autoCore(sel.id))}">
+    </div>
+    <div class="toggle-row affix-toggle">
+      <div class="lbl">
+        <b>Apply global affixes</b>
+        <span>prefix + suffix above</span>
+      </div>
+      <div class="toggle ${sel.applyAffixes ? '' : 'off'}" id="affixToggle" role="switch" tabindex="0" aria-checked="${sel.applyAffixes}"></div>
+    </div>
+    <div class="field">
+      <div class="field-label">Final filename</div>
+      <div class="fname">${renderFnameHtml(sel)}</div>
+    </div>
+    <div class="meta-grid">
+      <div class="meta-cell"><span class="k">position</span><div class="v">${sel.x}, ${sel.y}</div></div>
+      <div class="meta-cell"><span class="k">size</span><div class="v">${sel.w}<span class="u">×</span>${sel.h}</div></div>
+      <div class="meta-cell"><span class="k">opaque px</span><div class="v">${sel.count.toLocaleString()}</div></div>
+      <div class="meta-cell"><span class="k">avg alpha</span><div class="v">${sel.avgAlpha.toFixed(2)}</div></div>
+    </div>
+  `;
+
+  drawPreview(sel);
+
+  $('nameInput').addEventListener('input', (e) => {
+    sel.name = e.target.value;
+    e.target.classList.toggle('named', !!sel.name);
+    updateFnamePreview();
+    updateSelectedLabel();
+  });
+
+  $('affixToggle').addEventListener('click', () => {
+    sel.applyAffixes = !sel.applyAffixes;
+    renderInspector();
+    updateSelectedLabel();
+  });
+
+  $('includeToggle').addEventListener('click', () => toggleExcluded(sel));
+}
+
+function toggleExcluded(sel) {
+  if (!sel) return;
+  sel.excluded = !sel.excluded;
+  renderOverlays();
+  renderInspector();
+  renderHeader();
+}
+
+function drawPreview(sel) {
+  const canvas = $('previewCanvas');
+  if (!canvas) return;
+  const maxW = 280, maxH = 110;
+  const scale = Math.min(maxW / sel.w, maxH / sel.h, 6);
+  canvas.width = Math.round(sel.w * scale);
+  canvas.height = Math.round(sel.h * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(
+    state.image,
+    sel.x, sel.y, sel.w, sel.h,
+    0, 0, canvas.width, canvas.height
+  );
+  $('previewZoom').textContent = '×' + scale.toFixed(scale < 1 ? 2 : 0).replace(/\.0+$/, '');
+}
+
+function updateFnamePreview() {
+  const sel = state.sprites.find(s => s.id === state.selectedId);
+  if (!sel) return;
+  const wrap = document.querySelector('.fname');
+  if (wrap) wrap.innerHTML = renderFnameHtml(sel);
+}
+
+function updateSelectedLabel() {
+  const sel = state.sprites.find(s => s.id === state.selectedId);
+  if (!sel) return;
+  const el = document.querySelector('.sprite.selected');
+  if (el) el.setAttribute('data-name', finalFilename(sel) || 'unnamed');
+}
+
+function renderFnameHtml(sel) {
+  const core = sel.name || autoCore(sel.id);
+  const corePlaceholder = !sel.name;
+  const usePrefix = sel.applyAffixes && state.prefix;
+  const useSuffix = sel.applyAffixes && state.suffix;
+  return `${usePrefix ? `<span class="pre">${escapeHtml(state.prefix)}</span>` : ''}<span class="core ${corePlaceholder ? 'placeholder' : ''}">${escapeHtml(core)}</span>${useSuffix ? `<span class="suf">${escapeHtml(state.suffix)}</span>` : ''}<span class="ext">.png</span>`;
+}
+
+function autoCore(id) {
+  const pat = state.pattern || 'sprite_%03d';
+  return pat.replace(/%(0?)(\d*)d/g, (_, zero, width) => {
+    const w = width ? parseInt(width, 10) : 0;
+    const s = String(id);
+    if (zero && w) return s.padStart(w, '0');
+    if (w) return s.padStart(w, ' ');
+    return s;
+  });
+}
+
+function finalFilename(sel) {
+  const core = sel.name || autoCore(sel.id);
+  if (sel.applyAffixes) return state.prefix + core + state.suffix;
+  return core;
+}
+
+// ===================================================================
+// Status
+// ===================================================================
+
+function setStatus(kind, text) {
+  state.status = kind;
+  const pulse = $('statusPulse');
+  pulse.className = 'pulse ' + (kind === 'busy' ? 'busy' : kind === 'idle' ? 'idle' : '');
+  $('statusText').textContent = text;
+}
+
+// ===================================================================
+// Export ZIP
+// ===================================================================
+
+async function exportZip() {
+  if (!state.image || !state.sprites.length) return;
+  const toExport = state.sprites.filter(s => !s.excluded);
+  if (toExport.length === 0) return;
+  const btn = $('exportBtn');
+  btn.disabled = true;
+  setStatus('busy', `packing ${toExport.length} sprites…`);
+
+  try {
+    const zip = new JSZip();
+    const used = new Map();
+    const padding = state.padding;
+
+    for (const sel of toExport) {
+      const w = sel.w + padding * 2;
+      const h = sel.h + padding * 2;
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(
+        state.image,
+        sel.x, sel.y, sel.w, sel.h,
+        padding, padding, sel.w, sel.h
+      );
+
+      let base = finalFilename(sel) || 'sprite_' + sel.id;
+      base = base.replace(/[\\/:*?"<>|]/g, '_').trim() || 'sprite';
+
+      let name = base + '.png';
+      if (used.has(name)) {
+        const n = used.get(name) + 1;
+        used.set(name, n);
+        name = base + '_' + n + '.png';
+      } else {
+        used.set(name, 1);
+      }
+
+      const blob = await new Promise(res => c.toBlob(res, 'image/png'));
+      zip.file(name, blob);
+    }
+
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const base = state.fileName.replace(/\.[^.]+$/, '') || 'sprites';
+    a.href = url;
+    a.download = base + '_unpacked.zip';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    setStatus('ready', `exported ${toExport.length} sprite${toExport.length === 1 ? '' : 's'}`);
+  } catch (err) {
+    console.error(err);
+    setStatus('error', 'export failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ===================================================================
+// Helpers
+// ===================================================================
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// ===================================================================
+// Wiring
+// ===================================================================
+
+const debouncedDetect = debounce(runDetection, 220);
+
+function init() {
+  // File input + drop
+  $('fileInput').addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    if (f) openFile(f);
+    e.target.value = '';
+  });
+  $('replaceBtn').addEventListener('click', () => $('fileInput').click());
+  $('openFromEmpty').addEventListener('click', () => $('fileInput').click());
+
+  const frame = $('canvasFrame');
+  ['dragenter', 'dragover'].forEach(ev => {
+    frame.addEventListener(ev, (e) => { e.preventDefault(); frame.classList.add('drag-over'); });
+    document.addEventListener(ev, (e) => { e.preventDefault(); });
+  });
+  ['dragleave', 'drop'].forEach(ev => {
+    frame.addEventListener(ev, (e) => { e.preventDefault(); frame.classList.remove('drag-over'); });
+  });
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (f && f.type.startsWith('image/')) openFile(f);
+  });
+
+  // Global naming
+  $('prefixInput').addEventListener('input', (e) => {
+    state.prefix = e.target.value;
+    updateFnamePreview();
+    updateSelectedLabel();
+  });
+  $('suffixInput').addEventListener('input', (e) => {
+    state.suffix = e.target.value;
+    updateFnamePreview();
+    updateSelectedLabel();
+  });
+  $('patternInput').addEventListener('input', (e) => {
+    state.pattern = e.target.value;
+    updateFnamePreview();
+    updateSelectedLabel();
+  });
+
+  // Detection sliders
+  $('alphaSlider').addEventListener('input', (e) => {
+    state.alphaThreshold = parseInt(e.target.value, 10);
+    $('alphaVal').textContent = state.alphaThreshold;
+    debouncedDetect();
+  });
+  $('minSizeSlider').addEventListener('input', (e) => {
+    state.minSize = parseInt(e.target.value, 10);
+    $('minSizeVal').textContent = state.minSize;
+    debouncedDetect();
+  });
+  $('paddingSlider').addEventListener('input', (e) => {
+    state.padding = parseInt(e.target.value, 10);
+    $('paddingVal').textContent = state.padding;
+  });
+
+  $('reDetectBtn').addEventListener('click', () => runDetection());
+  $('exportBtn').addEventListener('click', exportZip);
+  $('zoomBtn').addEventListener('click', cycleZoom);
+
+  // Keyboard
+  document.addEventListener('keydown', (e) => {
+    // ignore when typing in an input
+    const tag = (e.target.tagName || '').toLowerCase();
+    const inField = tag === 'input' || tag === 'textarea' || tag === 'select';
+
+    if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
+      e.preventDefault();
+      exportZip();
+      return;
+    }
+    if (e.key === 'Escape') {
+      state.selectedId = null;
+      renderOverlays();
+      renderInspector();
+      return;
+    }
+    if (inField) return;
+
+    if ((e.key === 'x' || e.key === 'X') && state.selectedId != null) {
+      e.preventDefault();
+      const sel = state.sprites.find(s => s.id === state.selectedId);
+      toggleExcluded(sel);
+      return;
+    }
+    if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && state.sprites.length) {
+      e.preventDefault();
+      const cur = state.sprites.findIndex(s => s.id === state.selectedId);
+      const next = e.key === 'ArrowRight'
+        ? (cur + 1) % state.sprites.length
+        : (cur - 1 + state.sprites.length) % state.sprites.length;
+      state.selectedId = state.sprites[next].id;
+      renderOverlays();
+      renderInspector();
+    }
+  });
+
+  window.addEventListener('resize', () => { if (state.zoom === 'fit') fitZoom(); });
+
+  renderAll();
+  setStatus('idle', 'drop an image to start');
+}
+
+init();
+</script>
+</body>
+</html>
