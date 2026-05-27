@@ -215,6 +215,8 @@ a { color: inherit; text-decoration: none; }
   padding: 1px 3px; border-radius: 3px; line-height: 1;
 }
 .tool-btn.active .kbd { background: var(--ink); color: var(--ink-4); }
+.tool-btn.ai-tool:not(.active) svg { color: var(--violet); }
+.tool-btn.ai-tool.active::after { background: var(--violet); }
 
 /* ============ CANVAS WRAP ============ */
 .canvas-wrap {
@@ -355,6 +357,7 @@ a { color: inherit; text-decoration: none; }
 .canvas-stack.eraser { cursor: cell; }
 .canvas-stack.bucket { cursor: copy; }
 .canvas-stack.pipette { cursor: help; }
+.canvas-stack.smart-pick { cursor: crosshair; }
 
 /* floating controls */
 .zoom-badge {
@@ -945,6 +948,15 @@ input[type="file"] { display: none; }
         <span class="kbd">I</span>
       </button>
       <div class="tool-sep"></div>
+      <button class="tool-btn ai-tool" data-tool="smart-pick" title="Smart pick — click an object (S) · AI" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 4l5 5L9 20l-5-5z"/>
+          <path d="M14 5l5 5"/>
+          <path d="M3 8l.6 1.4L5 10l-1.4.6L3 12l-.6-1.4L1 10l1.4-.6z"/>
+        </svg>
+        <span class="kbd">S</span>
+      </button>
+      <div class="tool-sep"></div>
       <button class="tool-btn" id="btnUndo" title="Undo (⌘Z)" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 3 13 9 13"/><path d="M3 13l4-4a8 8 0 0 1 13 4"/></svg>
       </button>
@@ -1169,7 +1181,12 @@ const state = {
   ai: {
     rmbgPipeline: null,
     busy: false,
-    files: new Map(),    // file → { loaded, total }
+    files: new Map(),         // file → { loaded, total }
+    samModel: null,
+    samProcessor: null,
+    samEmbeddings: null,      // tensors from the encoder pass
+    samEncodedFor: null,      // signature of the image we encoded for
+    samRawImage: null,        // RawImage object kept for processor calls
   },
 };
 
@@ -1290,6 +1307,11 @@ function installImage(img, fileName, fileSize) {
   state.fileName = fileName;
   state.fileSize = fileSize;
   state.mask = new Uint8Array(state.imgW * state.imgH);
+  // invalidate SAM embeddings — they belong to the previous image
+  state.ai.samEmbeddings = null;
+  state.ai.samInputs = null;
+  state.ai.samRawImage = null;
+  state.ai.samEncodedFor = null;
   state.history = [];
   state.historyIdx = -1;
   state.entities = [];
@@ -1540,9 +1562,23 @@ function pipetteAt(x, y) {
   toast(`active: "${getEntity(entId)?.name}"`);
 }
 
-// ============ AI: BACKGROUND REMOVAL (RMBG-1.4 via Transformers.js) ============
+// ============ AI: shared (Transformers.js loader + progress modal) ============
 const TRANSFORMERS_CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
 const RMBG_MODEL = 'briaai/RMBG-1.4';
+const SAM_MODEL  = 'Xenova/slimsam-77-uniform';
+const SAM_MASK_INDEX = 1;  // 0=tight, 1=medium, 2=wide — default to medium
+
+let _transformersModulePromise = null;
+function loadTransformers() {
+  if (!_transformersModulePromise) {
+    _transformersModulePromise = import(TRANSFORMERS_CDN).then(tf => {
+      tf.env.allowLocalModels = false;
+      tf.env.useBrowserCache = true;
+      return tf;
+    });
+  }
+  return _transformersModulePromise;
+}
 
 function formatBytesShort(b) {
   if (!b && b !== 0) return '—';
@@ -1611,13 +1647,9 @@ async function loadRMBGPipeline() {
   if (state.ai.rmbgPipeline) return state.ai.rmbgPipeline;
   showAILoader('Loading the background-removal model', RMBG_MODEL);
   try {
-    const tf = await import(TRANSFORMERS_CDN);
-    const { pipeline, env } = tf;
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
-    // Use the library defaults (WASM + q8 quantization). This is the most reliable path:
-    // it works in every browser, and on real hardware q8 inference on RMBG-1.4 takes 1-3 s
-    // for typical images. A future toggle could opt into WebGPU + fp16 for users who want it.
+    const { pipeline } = await loadTransformers();
+    // Library defaults (WASM + q8) — most reliable across browsers. Real hardware does
+    // q8 inference in 1-3 s for typical images.
     const segmenter = await pipeline('image-segmentation', RMBG_MODEL, {
       progress_callback: handleAIProgress,
     });
@@ -1716,6 +1748,190 @@ function applyAIMaskAsBackground(rawMask, entityId) {
     if (fullData[i*4] < 128) { state.mask[i] = entityId; painted++; }
   }
   return painted;
+}
+
+// ============ AI: SMART PICK (SlimSAM via Transformers.js) ============
+async function loadSAMModels() {
+  if (state.ai.samModel && state.ai.samProcessor) return;
+  showAILoader('Loading the smart-pick model', SAM_MODEL);
+  try {
+    const { SamModel, AutoProcessor } = await loadTransformers();
+    state.ai.samProcessor = await AutoProcessor.from_pretrained(SAM_MODEL, {
+      progress_callback: handleAIProgress,
+    });
+    state.ai.samModel = await SamModel.from_pretrained(SAM_MODEL, {
+      progress_callback: handleAIProgress,
+    });
+    hideAILoader();
+  } catch (err) {
+    hideAILoader();
+    console.error('[mask-cutter] failed to load SAM:', err);
+    toast('Smart-pick model failed to load — see console', true);
+    throw err;
+  }
+}
+
+function imageSignature() {
+  return `${state.fileName}:${state.imgW}x${state.imgH}`;
+}
+
+async function encodeCurrentImageForSAM() {
+  if (!state.image) return;
+  const sig = imageSignature();
+  if (state.ai.samEncodedFor === sig && state.ai.samEmbeddings) return;
+
+  showAIInfer('preparing image for smart pick…');
+  await new Promise(r => requestAnimationFrame(() => r()));
+  try {
+    const { RawImage } = await loadTransformers();
+    const dataUrl = els.src.toDataURL('image/png');
+    const rawImage = await RawImage.fromURL(dataUrl);
+    state.ai.samRawImage = rawImage;
+
+    // Encoder pass: heavy once per image, then cached.
+    const inputs = await state.ai.samProcessor(rawImage);
+    state.ai.samInputs = inputs;
+    state.ai.samEmbeddings = await state.ai.samModel.get_image_embeddings(inputs);
+    state.ai.samEncodedFor = sig;
+  } finally {
+    hideAIInfer();
+  }
+}
+
+async function activateSmartPick() {
+  if (!state.image) return;
+  if (state.ai.busy) return;
+  state.ai.busy = true;
+  try {
+    await loadSAMModels();
+    await encodeCurrentImageForSAM();
+    state.tool = 'smart-pick';
+    toast('smart pick ready — click an object');
+    updateUI();
+  } catch (err) {
+    console.error(err);
+    // Fall back to brush if anything failed
+    state.tool = 'brush';
+    updateUI();
+  } finally {
+    state.ai.busy = false;
+  }
+}
+
+async function smartPickAt(x, y) {
+  if (!state.image || !state.ai.samModel || !state.ai.samProcessor) return;
+  if (!state.ai.samEmbeddings || state.ai.samEncodedFor !== imageSignature()) {
+    // image changed under us — re-encode
+    await encodeCurrentImageForSAM();
+  }
+  if (!state.activeEntityId) {
+    toast('create an entity first', true);
+    return;
+  }
+  if (state.ai.busy) return;
+  state.ai.busy = true;
+  showAIInfer('segmenting…');
+  try {
+    // Decoder pass: pass the click point as an input prompt and reuse the cached
+    // image embeddings. Coordinates are in source-image pixel space.
+    const promptInputs = await state.ai.samProcessor(
+      state.ai.samRawImage,
+      { input_points: [[[Math.floor(x), Math.floor(y)]]] }
+    );
+    const outputs = await state.ai.samModel({
+      ...promptInputs,
+      ...state.ai.samEmbeddings,
+    });
+    const masks = await state.ai.samProcessor.post_process_masks(
+      outputs.pred_masks,
+      promptInputs.original_sizes,
+      promptInputs.reshaped_input_sizes,
+    );
+    hideAIInfer();
+    // Pick the candidate mask with the highest predicted IoU score —
+    // mask 0 is usually the "widest" interpretation (often the whole image),
+    // masks 1/2 are the focused ones. Best-IoU is the standard SAM heuristic.
+    const ious = outputs.iou_scores?.data;
+    let bestIdx = 1;
+    if (ious && ious.length) {
+      let best = -Infinity;
+      for (let i = 0; i < ious.length; i++) {
+        if (ious[i] > best) { best = ious[i]; bestIdx = i; }
+      }
+    }
+    applySAMMaskToActiveEntity(masks[0], bestIdx);
+  } catch (err) {
+    hideAIInfer();
+    console.error(err);
+    toast('smart pick failed — see console', true);
+  } finally {
+    state.ai.busy = false;
+  }
+}
+
+// masks[0] from post_process_masks is a Tensor with shape [batch, num_masks, H, W]
+// (or [num_masks, H, W] for some processor versions). Each element is a boolean
+// indicating mask membership at the source-image resolution.
+function applySAMMaskToActiveEntity(maskTensor, maskIdx) {
+  if (!maskTensor) { toast('SAM returned no mask', true); return; }
+  const dims = maskTensor.dims || maskTensor.shape;
+  const data = maskTensor.data;
+  if (!dims || !data) {
+    console.error('[mask-cutter] unexpected SAM mask shape:', maskTensor);
+    toast('SAM returned an unreadable mask', true);
+    return;
+  }
+  // Normalise dims: drop the leading batch axis if present.
+  let numMasks, H, W;
+  if (dims.length === 4) { numMasks = dims[1]; H = dims[2]; W = dims[3]; }
+  else if (dims.length === 3) { numMasks = dims[0]; H = dims[1]; W = dims[2]; }
+  else {
+    console.error('[mask-cutter] unsupported SAM dims:', dims);
+    toast('SAM returned an unreadable mask shape', true);
+    return;
+  }
+  const chosen = Math.min(maskIdx, numMasks - 1);
+  const planeSize = H * W;
+  const offset = chosen * planeSize;
+
+  const entityId = state.activeEntityId;
+  let painted = 0;
+
+  if (W === state.imgW && H === state.imgH) {
+    for (let i = 0; i < planeSize; i++) {
+      if (data[offset + i]) { state.mask[i] = entityId; painted++; }
+    }
+  } else {
+    // Different resolution — resample via canvas
+    const tmp = document.createElement('canvas');
+    tmp.width = W; tmp.height = H;
+    const tctx = tmp.getContext('2d');
+    const imd = tctx.createImageData(W, H);
+    for (let i = 0; i < planeSize; i++) {
+      const v = data[offset + i] ? 255 : 0;
+      imd.data[i*4] = v; imd.data[i*4+1] = v; imd.data[i*4+2] = v; imd.data[i*4+3] = 255;
+    }
+    tctx.putImageData(imd, 0, 0);
+    const out = document.createElement('canvas');
+    out.width = state.imgW; out.height = state.imgH;
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+    octx.drawImage(tmp, 0, 0, state.imgW, state.imgH);
+    const full = octx.getImageData(0, 0, state.imgW, state.imgH).data;
+    for (let i = 0; i < state.mask.length; i++) {
+      if (full[i*4] > 128) { state.mask[i] = entityId; painted++; }
+    }
+  }
+
+  if (painted === 0) {
+    toast('no region found at that point', true);
+    return;
+  }
+  rerasterizeFull();
+  recountAll();
+  pushHistory();
+  updateUI();
+  toast(`smart pick · ${fmtNum(painted)} px → "${activeEntity()?.name}"`);
 }
 
 // ============ HISTORY ============
@@ -1850,11 +2066,12 @@ function updateUI() {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   });
   // cursor for canvas-stack
-  els.stack.classList.remove('crosshair', 'eraser', 'bucket', 'pipette');
+  els.stack.classList.remove('crosshair', 'eraser', 'bucket', 'pipette', 'smart-pick');
   if (state.tool === 'brush') els.stack.classList.add('crosshair');
   else if (state.tool === 'eraser') els.stack.classList.add('eraser');
   else if (state.tool === 'bucket') els.stack.classList.add('bucket');
   else if (state.tool === 'pipette') els.stack.classList.add('pipette');
+  else if (state.tool === 'smart-pick') els.stack.classList.add('smart-pick');
 
   // status bar
   const ent = activeEntity();
@@ -2002,6 +2219,10 @@ els.stack.addEventListener('mousedown', e => {
   }
   if (state.tool === 'pipette') {
     pipetteAt(x, y);
+    return;
+  }
+  if (state.tool === 'smart-pick') {
+    smartPickAt(x, y);
     return;
   }
   if (state.tool === 'brush' && !state.activeEntityId) {
@@ -2215,7 +2436,12 @@ els.entitiesList.addEventListener('click', e => {
 document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
   b.addEventListener('click', () => {
     if (b.disabled) return;
-    state.tool = b.dataset.tool;
+    const tool = b.dataset.tool;
+    if (tool === 'smart-pick') {
+      activateSmartPick();
+      return;
+    }
+    state.tool = tool;
     updateUI();
   });
 });
@@ -2291,6 +2517,7 @@ window.addEventListener('keydown', e => {
   else if (k === 'e') { state.tool = 'eraser'; updateUI(); }
   else if (k === 'g') { state.tool = 'bucket'; updateUI(); }
   else if (k === 'i') { state.tool = 'pipette'; updateUI(); }
+  else if (k === 's') { activateSmartPick(); }
   else if (k === '[') { state.brushSize = clamp(state.brushSize - 2, 1, 200); updateUI(); }
   else if (k === ']') { state.brushSize = clamp(state.brushSize + 2, 1, 200); updateUI(); }
   // 1..9 → activate entity #n
