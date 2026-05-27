@@ -680,6 +680,212 @@ a { color: inherit; text-decoration: none; }
 .toast.warn { background: var(--warn); }
 
 input[type="file"] { display: none; }
+
+/* ============ AI action button ============ */
+.ai-action {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  margin-bottom: 12px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+  position: relative;
+  transition: border-color .15s, box-shadow .15s, transform .12s;
+}
+.ai-action:hover:not(:disabled) {
+  border-color: var(--violet);
+  transform: translate(-1px,-1px);
+  box-shadow: 3px 3px 0 var(--violet);
+}
+.ai-action:disabled { opacity: 0.45; cursor: not-allowed; }
+.ai-action svg { width: 14px; height: 14px; color: var(--violet); flex-shrink: 0; }
+.ai-action .ai-badge {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  background: var(--violet);
+  color: var(--paper);
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  margin-left: 4px;
+  font-weight: 500;
+}
+.ai-action.busy { pointer-events: none; }
+.ai-action.busy .ai-label { opacity: 0.4; }
+.ai-action.busy::after {
+  content: ""; position: absolute;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: 14px; height: 14px;
+  border: 2px solid var(--violet);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+
+/* ============ AI download modal ============ */
+.ai-loader {
+  position: fixed; inset: 0;
+  background: rgba(26, 23, 20, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 300;
+  display: flex; align-items: center; justify-content: center;
+  animation: fadein .2s ease;
+}
+.ai-loader.hidden { display: none; }
+@keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+
+.ai-loader-card {
+  width: 460px;
+  max-width: 92vw;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 16px;
+  padding: 28px 28px 22px;
+  box-shadow: 6px 6px 0 var(--peach), 0 30px 60px -20px rgba(0,0,0,0.4);
+  text-align: center;
+}
+.ai-loader-glyph {
+  width: 56px; height: 56px;
+  margin: 0 auto 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--violet) 0%, var(--peach) 100%);
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.ai-loader-glyph::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+  animation: shimmer 2s linear infinite;
+}
+.ai-loader-glyph svg { width: 28px; height: 28px; color: var(--paper); position: relative; z-index: 1; }
+@keyframes shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.ai-loader-card h3 {
+  margin: 0 0 4px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+.ai-loader-sub {
+  margin: 0 0 18px;
+  color: var(--ink-2);
+  font-size: 13.5px;
+}
+
+.ai-loader-bar {
+  height: 8px;
+  background: var(--cream-2);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.ai-loader-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--violet) 0%, var(--peach) 100%);
+  border-radius: 999px;
+  transition: width .2s ease;
+}
+.ai-loader-bar.indeterminate .ai-loader-fill {
+  width: 40%;
+  animation: indet 1.4s ease-in-out infinite;
+}
+@keyframes indet {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(310%); }
+}
+
+.ai-loader-stats {
+  display: flex; justify-content: space-between;
+  margin-top: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-2);
+  letter-spacing: 0.02em;
+}
+.ai-loader-stats b { color: var(--ink); font-weight: 600; }
+.ai-loader-stats .file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.ai-loader-note {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  line-height: 1.55;
+}
+.ai-loader-note b { color: var(--ink-2); font-weight: 500; }
+
+.ai-loader-cancel {
+  margin-top: 14px;
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  border: 1px solid var(--line);
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  cursor: pointer;
+  letter-spacing: 0.02em;
+}
+.ai-loader-cancel:hover { color: var(--warn); border-color: var(--warn); }
+
+/* ============ AI inference inline spinner ============ */
+.ai-infer {
+  position: fixed;
+  bottom: 110px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 250;
+  background: var(--ink);
+  color: var(--paper);
+  padding: 10px 18px 10px 14px;
+  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--display);
+  font-weight: 500;
+  font-size: 13px;
+  box-shadow: 0 10px 30px -8px rgba(0,0,0,0.45);
+}
+.ai-infer.hidden { display: none; }
+.ai-infer .spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--paper);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+.ai-infer .ai-pill {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: rgba(255,255,255,0.15);
+  padding: 1px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+}
 </style>
 </head>
 <body>
@@ -818,6 +1024,15 @@ input[type="file"] { display: none; }
           <span class="meta" id="entitiesMeta">0 · exclusive colours</span>
         </div>
 
+        <button class="ai-action" id="btnAiBackground" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l1.4 4.2L17.6 8.6 13.4 10 12 14.2 10.6 10 6.4 8.6 10.6 7.2z"/>
+            <path d="M19 14l.8 2.4L22 17l-2.2.6L19 20l-.8-2.4L16 17l2.2-.6z"/>
+          </svg>
+          <span class="ai-label">auto-detect background</span>
+          <span class="ai-badge">AI</span>
+        </button>
+
         <div class="entities" id="entitiesList">
           <div class="empty-list">
             No entities.<br>
@@ -885,6 +1100,36 @@ input[type="file"] { display: none; }
 <!-- toast -->
 <div class="toast" id="toast"></div>
 
+<!-- AI download modal -->
+<div class="ai-loader hidden" id="aiLoader" aria-hidden="true">
+  <div class="ai-loader-card">
+    <div class="ai-loader-glyph">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l1.4 4.2L17.6 8.6 13.4 10 12 14.2 10.6 10 6.4 8.6 10.6 7.2z"/>
+        <path d="M19 14l.8 2.4L22 17l-2.2.6L19 20l-.8-2.4L16 17l2.2-.6z"/>
+      </svg>
+    </div>
+    <h3 id="aiLoaderTitle">Loading the background-removal model</h3>
+    <p class="ai-loader-sub">First-time download · cached in your browser afterwards</p>
+    <div class="ai-loader-bar indeterminate" id="aiLoaderBar"><div class="ai-loader-fill" id="aiLoaderFill"></div></div>
+    <div class="ai-loader-stats">
+      <span class="file" id="aiLoaderFile">connecting to huggingface.co…</span>
+      <span><b id="aiLoaderBytes">0</b> / <span id="aiLoaderTotal">—</span></span>
+    </div>
+    <div class="ai-loader-note">
+      model · <b id="aiLoaderModel">briaai/RMBG-1.4</b> · ~80&nbsp;MB · served by huggingface.co<br>
+      the image you uploaded never leaves your browser
+    </div>
+  </div>
+</div>
+
+<!-- AI inference inline spinner -->
+<div class="ai-infer hidden" id="aiInfer">
+  <span class="spinner"></span>
+  <span id="aiInferText">analysing image…</span>
+  <span class="ai-pill">AI</span>
+</div>
+
 <input type="file" id="fileInput" accept="image/*">
 
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -921,6 +1166,11 @@ const state = {
   fileName: '',
   fileSize: 0,
   pendingDelete: null,   // entity id awaiting confirm
+  ai: {
+    rmbgPipeline: null,
+    busy: false,
+    files: new Map(),    // file → { loaded, total }
+  },
 };
 
 // ============ DOM ============
@@ -980,6 +1230,17 @@ const els = {
   statusZoom: $('statusZoom'),
   statusZoomVal: $('statusZoomVal'),
   canvasWrap: $('canvasWrap'),
+  btnAiBackground: $('btnAiBackground'),
+  aiLoader: $('aiLoader'),
+  aiLoaderTitle: $('aiLoaderTitle'),
+  aiLoaderBar: $('aiLoaderBar'),
+  aiLoaderFill: $('aiLoaderFill'),
+  aiLoaderFile: $('aiLoaderFile'),
+  aiLoaderBytes: $('aiLoaderBytes'),
+  aiLoaderTotal: $('aiLoaderTotal'),
+  aiLoaderModel: $('aiLoaderModel'),
+  aiInfer: $('aiInfer'),
+  aiInferText: $('aiInferText'),
 };
 const srcCtx = els.src.getContext('2d');
 const overlayCtx = els.overlay.getContext('2d');
@@ -1055,6 +1316,7 @@ function installImage(img, fileName, fileSize) {
   // enable controls
   els.btnReset.disabled = false;
   els.btnAddEntity.disabled = false;
+  els.btnAiBackground.disabled = false;
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.disabled = false);
 
   // file pill
@@ -1276,6 +1538,184 @@ function pipetteAt(x, y) {
   state.tool = 'brush';
   updateUI();
   toast(`active: "${getEntity(entId)?.name}"`);
+}
+
+// ============ AI: BACKGROUND REMOVAL (RMBG-1.4 via Transformers.js) ============
+const TRANSFORMERS_CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
+const RMBG_MODEL = 'briaai/RMBG-1.4';
+
+function formatBytesShort(b) {
+  if (!b && b !== 0) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b / 1024).toFixed(0) + ' kB';
+  return (b / (1024*1024)).toFixed(1) + ' MB';
+}
+
+function showAILoader(title, modelLabel) {
+  els.aiLoaderTitle.textContent = title;
+  els.aiLoaderModel.textContent = modelLabel;
+  els.aiLoaderFile.textContent = 'connecting to huggingface.co…';
+  els.aiLoaderBytes.textContent = '0';
+  els.aiLoaderTotal.textContent = '—';
+  els.aiLoaderFill.style.width = '0%';
+  els.aiLoaderBar.classList.add('indeterminate');
+  els.aiLoader.classList.remove('hidden');
+  els.aiLoader.setAttribute('aria-hidden', 'false');
+  state.ai.files = new Map();
+}
+function hideAILoader() {
+  els.aiLoader.classList.add('hidden');
+  els.aiLoader.setAttribute('aria-hidden', 'true');
+}
+function showAIInfer(text) {
+  els.aiInferText.textContent = text;
+  els.aiInfer.classList.remove('hidden');
+}
+function hideAIInfer() {
+  els.aiInfer.classList.add('hidden');
+}
+
+function handleAIProgress(e) {
+  // e.status: 'initiate' | 'download' | 'progress' | 'done' | 'ready'
+  // e.file: filename | e.loaded / e.total: bytes | e.progress: 0..100
+  if (!e.file) return;
+  if (e.status === 'initiate' || e.status === 'download' || e.status === 'progress') {
+    const rec = state.ai.files.get(e.file) || { loaded: 0, total: 0 };
+    if (typeof e.loaded === 'number') rec.loaded = e.loaded;
+    if (typeof e.total === 'number' && e.total > 0) rec.total = e.total;
+    state.ai.files.set(e.file, rec);
+  }
+  if (e.status === 'done' || e.status === 'ready') {
+    const rec = state.ai.files.get(e.file);
+    if (rec && rec.total) rec.loaded = rec.total;
+  }
+  // Aggregate
+  let loaded = 0, total = 0, anyKnownTotal = false;
+  for (const rec of state.ai.files.values()) {
+    loaded += rec.loaded;
+    if (rec.total) { total += rec.total; anyKnownTotal = true; }
+  }
+  els.aiLoaderBytes.textContent = formatBytesShort(loaded);
+  if (anyKnownTotal) {
+    els.aiLoaderTotal.textContent = formatBytesShort(total);
+    els.aiLoaderBar.classList.remove('indeterminate');
+    els.aiLoaderFill.style.width = Math.min(100, (loaded / total) * 100) + '%';
+  } else {
+    els.aiLoaderTotal.textContent = '—';
+    els.aiLoaderBar.classList.add('indeterminate');
+  }
+  els.aiLoaderFile.textContent = e.file;
+}
+
+async function loadRMBGPipeline() {
+  if (state.ai.rmbgPipeline) return state.ai.rmbgPipeline;
+  showAILoader('Loading the background-removal model', RMBG_MODEL);
+  try {
+    const tf = await import(TRANSFORMERS_CDN);
+    const { pipeline, env } = tf;
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+    // Use the library defaults (WASM + q8 quantization). This is the most reliable path:
+    // it works in every browser, and on real hardware q8 inference on RMBG-1.4 takes 1-3 s
+    // for typical images. A future toggle could opt into WebGPU + fp16 for users who want it.
+    const segmenter = await pipeline('image-segmentation', RMBG_MODEL, {
+      progress_callback: handleAIProgress,
+    });
+    state.ai.rmbgPipeline = segmenter;
+    hideAILoader();
+    return segmenter;
+  } catch (err) {
+    hideAILoader();
+    console.error('[mask-cutter] failed to load RMBG:', err);
+    toast('AI model failed to load — see console', true);
+    throw err;
+  }
+}
+
+async function autoBackground() {
+  if (!state.image || state.ai.busy) return;
+  state.ai.busy = true;
+  els.btnAiBackground.classList.add('busy');
+  els.btnAiBackground.disabled = true;
+  try {
+    const segmenter = await loadRMBGPipeline();
+    showAIInfer('detecting background…');
+    // Give the spinner a frame to render before the heavy CPU work
+    await new Promise(r => requestAnimationFrame(() => r()));
+    const dataUrl = els.src.toDataURL('image/png');
+    const output = await segmenter(dataUrl);
+    hideAIInfer();
+
+    if (!output || !output.length) {
+      toast('AI returned no mask', true);
+      return;
+    }
+    // RMBG-1.4 returns [{ label: 'foreground', mask: RawImage }] where mask=255 means subject
+    const result = output[0];
+    const mask = result.mask;
+
+    // Get or create the background entity
+    let bg = state.entities.find(e => e.name.toLowerCase() === 'background');
+    if (!bg) {
+      addEntity('background');
+      bg = state.entities[state.entities.length - 1];
+    }
+    state.activeEntityId = bg.id;
+
+    const painted = applyAIMaskAsBackground(mask, bg.id);
+    rerasterizeFull();
+    recountAll();
+    pushHistory();
+    updateUI();
+    toast(`background detected · ${fmtNum(painted)} px → "${bg.name}"`);
+  } catch (err) {
+    hideAIInfer();
+    console.error(err);
+  } finally {
+    state.ai.busy = false;
+    els.btnAiBackground.classList.remove('busy');
+    els.btnAiBackground.disabled = !state.image;
+  }
+}
+
+// Maps a RawImage mask (from Transformers.js) onto state.mask.
+// For RMBG: mask pixel ≥ 128 → foreground (subject), < 128 → background.
+// We paint the BACKGROUND pixels into the target entity.
+function applyAIMaskAsBackground(rawMask, entityId) {
+  const mw = rawMask.width, mh = rawMask.height;
+  const md = rawMask.data;
+  const channels = Math.max(1, Math.round(md.length / (mw * mh)));
+  let painted = 0;
+
+  if (mw === state.imgW && mh === state.imgH && channels === 1) {
+    for (let i = 0; i < state.mask.length; i++) {
+      if (md[i] < 128) { state.mask[i] = entityId; painted++; }
+    }
+    return painted;
+  }
+  // Resample via canvas if resolution / channel layout differs
+  const tmp = document.createElement('canvas');
+  tmp.width = mw; tmp.height = mh;
+  const tctx = tmp.getContext('2d');
+  const id = tctx.createImageData(mw, mh);
+  for (let i = 0; i < mw * mh; i++) {
+    const v = md[i * channels];
+    id.data[i*4 + 0] = v;
+    id.data[i*4 + 1] = v;
+    id.data[i*4 + 2] = v;
+    id.data[i*4 + 3] = 255;
+  }
+  tctx.putImageData(id, 0, 0);
+  const out = document.createElement('canvas');
+  out.width = state.imgW; out.height = state.imgH;
+  const octx = out.getContext('2d');
+  octx.imageSmoothingEnabled = true;
+  octx.drawImage(tmp, 0, 0, state.imgW, state.imgH);
+  const fullData = octx.getImageData(0, 0, state.imgW, state.imgH).data;
+  for (let i = 0; i < state.mask.length; i++) {
+    if (fullData[i*4] < 128) { state.mask[i] = entityId; painted++; }
+  }
+  return painted;
 }
 
 // ============ HISTORY ============
@@ -1789,6 +2229,7 @@ els.btnReset.addEventListener('click', () => {
   clearMask();
 });
 els.btnExport.addEventListener('click', exportZip);
+els.btnAiBackground.addEventListener('click', autoBackground);
 
 // zoom controls
 els.zoomIn.addEventListener('click', () => setZoom(state.zoom * 1.2));
