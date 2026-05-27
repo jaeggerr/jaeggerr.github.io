@@ -227,8 +227,11 @@ a { color: inherit; text-decoration: none; }
     var(--bg);
   overflow: auto;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  /* `safe center` keeps the canvas centred when smaller than the viewport, but
+     falls back to start-alignment when it overflows — otherwise the top/left
+     edges become unreachable via scroll (classic flex-centering + overflow bug). */
+  align-items: safe center;
+  justify-content: safe center;
   min-height: 0;
 }
 
