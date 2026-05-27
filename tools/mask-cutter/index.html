@@ -1,0 +1,1873 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mask Cutter · jaeggerr</title>
+<meta name="description" content="Paint cut-outs on an image and export each region as a PNG, in a ZIP. Everything runs locally in your tab — no backend.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='2' width='20' height='20' rx='3' fill='%23FAF6F0'/%3E%3Ccircle cx='7' cy='16' r='3' fill='%23FF8A5B'/%3E%3Ccircle cx='5' cy='8' r='2.2' fill='%23B14CFF'/%3E%3Ccircle cx='11' cy='5.5' r='2' fill='%2320C7E5'/%3E%3Cpath d='M14 6l6 6-8 8-6-6z' fill='%231A1714'/%3E%3Cpath d='M14 6l3-3 3 3-3 3z' fill='%23C9E265'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF6F0;
+  --paper: #FFFCF6;
+  --cream-2: #F4EFE6;
+  --ink: #1A1714;
+  --ink-2: #5C5651;
+  --ink-3: #8A8276;
+  --ink-4: #B8B0A2;
+  --line: #E6DFD3;
+  --line-strong: #D6CFBF;
+
+  --peach:  #FF8A5B;
+  --lime:   #C9E265;
+  --violet: #B14CFF;
+  --cyan:   #20C7E5;
+  --rose:   #FF4F8B;
+  --warn:   #E04A2E;
+
+  --display: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+
+.app {
+  display: grid;
+  grid-template-rows: 60px 1fr 32px;
+  height: 100vh;
+}
+
+/* ============ TOPBAR ============ */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 24px;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.brand { display: flex; align-items: center; gap: 14px; }
+.brand-mark {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--peach) 0 50%, var(--violet) 50% 100%);
+  position: relative;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+}
+.brand-mark::after {
+  content: ""; position: absolute; inset: 7px;
+  border-radius: 3px;
+  background:
+    linear-gradient(45deg, rgba(255,255,255,0.5) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.5) 75%),
+    linear-gradient(45deg, rgba(255,255,255,0.5) 25%, transparent 25%, transparent 75%, rgba(255,255,255,0.5) 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 3px 3px;
+}
+.brand-text { display: flex; flex-direction: column; gap: 0; }
+.brand-text .crumb {
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-3); letter-spacing: 0.04em; line-height: 1.2;
+}
+.brand-text .crumb a { color: inherit; border-bottom: 1px dotted var(--ink-4); padding-bottom: 1px; }
+.brand-text .crumb a:hover { color: var(--violet); border-color: var(--violet); }
+.brand-text .tool {
+  font-family: var(--display); font-size: 16px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--ink); margin-top: 2px;
+}
+.brand-text .tool em { font-style: normal; color: var(--ink-3); font-weight: 400; font-size: 13px; margin-left: 6px; }
+
+.filepill {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 7px 13px 7px 11px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+  max-width: 360px;
+}
+.filepill .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--ink-4);
+}
+.filepill.live .dot {
+  background: var(--lime);
+  box-shadow: 0 0 0 3px rgba(201,226,101,0.25);
+}
+.filepill b { color: var(--ink); font-weight: 600; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.filepill .dim { color: var(--ink-3); }
+
+.actions { display: flex; align-items: center; gap: 10px; justify-self: end; }
+.btn-ghost {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+  cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.btn-ghost:hover { border-color: var(--ink-4); color: var(--ink); }
+.btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-ghost svg { width: 14px; height: 14px; }
+.btn-export {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 9px 16px 9px 14px;
+  background: var(--ink); color: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 10px;
+  font-family: var(--display);
+  font-weight: 600; font-size: 13px;
+  letter-spacing: -0.005em;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 4px 4px 0 var(--peach);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s;
+}
+.btn-export:hover:not(:disabled) { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--peach); }
+.btn-export:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: 4px 4px 0 var(--line-strong); }
+.btn-export svg { width: 14px; height: 14px; }
+.btn-export .count {
+  font-family: var(--mono); font-size: 11px;
+  background: var(--peach); color: var(--ink);
+  padding: 1px 6px; border-radius: 4px; margin-left: 4px;
+}
+.btn-export.busy { pointer-events: none; }
+.btn-export.busy .label { opacity: 0; }
+.btn-export.busy::after {
+  content: ""; position: absolute;
+  width: 14px; height: 14px;
+  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  border: 2px solid var(--paper);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* ============ MAIN ============ */
+.main {
+  display: grid;
+  grid-template-columns: 64px 1fr 340px;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ============ LEFT TOOLRAIL ============ */
+.rail {
+  border-right: 1px solid var(--line);
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  gap: 4px;
+}
+.tool-btn {
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  position: relative;
+  transition: background .12s, color .12s;
+}
+.tool-btn:hover:not(:disabled) { background: var(--cream-2); color: var(--ink); }
+.tool-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.tool-btn.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.tool-btn.active::after {
+  content: "";
+  position: absolute;
+  left: -8px; top: 50%; transform: translateY(-50%);
+  width: 3px; height: 16px;
+  background: var(--peach); border-radius: 2px;
+}
+.tool-btn svg { width: 18px; height: 18px; }
+.tool-sep { width: 24px; height: 1px; background: var(--line); margin: 6px 0; }
+.kbd {
+  position: absolute;
+  bottom: -3px; right: -3px;
+  font-family: var(--mono);
+  font-size: 9px; color: var(--ink-3);
+  background: var(--bg);
+  padding: 1px 3px; border-radius: 3px; line-height: 1;
+}
+.tool-btn.active .kbd { background: var(--ink); color: var(--ink-4); }
+
+/* ============ CANVAS WRAP ============ */
+.canvas-wrap {
+  position: relative;
+  background:
+    linear-gradient(var(--cream-2) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, var(--cream-2) 1px, transparent 1px) 0 0 / 32px 32px,
+    var(--bg);
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* ============ EMPTY STATE ============ */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 48px;
+}
+.empty.hidden { display: none; }
+.empty-card {
+  width: min(620px, 90vw);
+  padding: 56px 48px;
+  background: var(--paper);
+  border: 2px dashed var(--line-strong);
+  border-radius: 18px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s, transform .12s;
+  position: relative;
+}
+.empty-card:hover, .empty-card.dragover {
+  border-color: var(--peach);
+  background: #FFF7F0;
+  transform: translateY(-2px);
+}
+.empty-card.dragover { border-style: solid; }
+.empty-card .glyph {
+  display: flex; justify-content: center; gap: 6px;
+  margin-bottom: 18px;
+}
+.empty-card .glyph i {
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  display: inline-block;
+}
+.empty-card .glyph i:nth-child(1) { background: var(--peach); }
+.empty-card .glyph i:nth-child(2) { background: var(--lime); transform: translateY(-4px); }
+.empty-card .glyph i:nth-child(3) { background: var(--violet); transform: translateY(2px); }
+.empty-card .glyph i:nth-child(4) { background: var(--cyan); transform: translateY(-2px); }
+.empty-card .glyph i:nth-child(5) { background: var(--rose); transform: translateY(4px); }
+.empty-card h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 28px;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+.empty-card p {
+  margin: 0 0 22px;
+  color: var(--ink-2);
+  font-size: 15px;
+  max-width: 42ch;
+  margin-inline: auto;
+}
+.empty-card p b { color: var(--ink); }
+.empty-card .open-btn {
+  display: inline-flex;
+  align-items: center; gap: 8px;
+  padding: 11px 20px 11px 18px;
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 10px;
+  font-family: var(--display);
+  font-weight: 600; font-size: 14px;
+  box-shadow: 4px 4px 0 var(--peach);
+  transition: transform .12s, box-shadow .12s;
+}
+.empty-card .open-btn:hover { transform: translate(-1px,-1px); box-shadow: 5px 5px 0 var(--peach); }
+.empty-card .open-btn svg { width: 16px; height: 16px; }
+.empty-hint {
+  display: flex;
+  gap: 22px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+.empty-hint b { color: var(--ink); font-weight: 600; }
+.empty-hint span { display: inline-flex; align-items: center; gap: 6px; }
+.empty-hint .key {
+  font-family: var(--mono);
+  border: 1px solid var(--line-strong);
+  background: var(--paper);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  color: var(--ink);
+}
+
+/* ============ CANVAS VIEWPORT ============ */
+.canvas-viewport {
+  position: relative;
+  padding: 40px 40px 80px;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.canvas-viewport.hidden { display: none; }
+
+.canvas-stack {
+  position: relative;
+  flex-shrink: 0;
+  box-shadow:
+    0 1px 0 var(--line),
+    0 2px 24px -4px rgba(40,30,15,0.08),
+    0 20px 50px -20px rgba(40,30,15,0.18);
+  background: var(--paper);
+}
+.canvas-stack canvas {
+  display: block;
+  position: absolute;
+  top: 0; left: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.canvas-stack #srcCanvas { position: relative; }
+.canvas-stack #overlayCanvas { pointer-events: none; }
+.canvas-stack #cursorCanvas { pointer-events: none; }
+
+.canvas-stack.crosshair { cursor: crosshair; }
+.canvas-stack.eraser { cursor: cell; }
+.canvas-stack.bucket { cursor: copy; }
+.canvas-stack.pipette { cursor: help; }
+
+/* floating controls */
+.zoom-badge {
+  position: fixed;
+  bottom: 50px; right: 360px;
+  z-index: 10;
+  display: flex; align-items: center; gap: 6px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 4px 5px 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-2);
+  box-shadow: 0 6px 18px -10px rgba(40,30,15,0.18);
+}
+.zoom-badge button {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: none;
+  background: var(--cream-2);
+  color: var(--ink-2); cursor: pointer;
+  font-family: var(--mono); font-size: 13px; line-height: 1;
+}
+.zoom-badge button:hover { background: var(--ink); color: var(--paper); }
+.zoom-badge b { color: var(--ink); font-weight: 600; min-width: 36px; text-align: right; }
+.zoom-badge .fit {
+  padding: 3px 8px;
+  margin-left: 2px;
+  border-radius: 999px;
+  background: var(--cream-2);
+  color: var(--ink-2);
+  width: auto; height: 22px;
+}
+
+.canvas-controls {
+  position: fixed;
+  bottom: 50px; left: calc(64px + 50%);
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex; align-items: center; gap: 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 14px;
+  box-shadow: 0 6px 18px -10px rgba(40,30,15,0.18);
+}
+.canvas-controls.hidden,
+.zoom-badge.hidden { display: none; }
+.ctrl { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.ctrl .label { letter-spacing: 0.04em; }
+.ctrl .v { color: var(--ink); font-weight: 600; min-width: 30px; }
+.ctrl-sep { width: 1px; height: 18px; background: var(--line); }
+.slider {
+  position: relative;
+  width: 96px; height: 16px;
+  cursor: pointer;
+}
+.slider::before {
+  content: ""; position: absolute;
+  top: 50%; left: 0; right: 0; height: 4px;
+  transform: translateY(-50%);
+  background: var(--cream-2); border-radius: 999px;
+}
+.slider .fill {
+  position: absolute;
+  top: 50%; left: 0; height: 4px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--ink);
+  pointer-events: none;
+}
+.slider .knob {
+  position: absolute;
+  top: 50%; transform: translate(-50%,-50%);
+  width: 14px; height: 14px;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* ============ RIGHT PANEL ============ */
+.panel {
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+.panel-section { padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.panel-section:last-of-type { border-bottom: none; }
+.panel-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 12px;
+}
+.panel-h h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 16px;
+  letter-spacing: -0.015em;
+}
+.panel-h .meta {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+/* entity list */
+.entities { display: flex; flex-direction: column; gap: 6px; }
+.empty-list {
+  padding: 18px 14px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--paper);
+  line-height: 1.6;
+}
+.empty-list b { color: var(--ink); font-weight: 600; }
+
+.entity {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  cursor: pointer;
+  transition: border-color .15s, transform .12s, box-shadow .15s;
+}
+.entity:hover { border-color: var(--ink-4); }
+.entity.active {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 var(--peach);
+  transform: translate(-1px,-1px);
+}
+.swatch {
+  width: 18px; height: 18px;
+  border-radius: 6px;
+  border: 1px solid rgba(26,23,20,0.12);
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+}
+.swatch:hover { transform: scale(1.1); }
+.entity .name { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.entity .name .n {
+  font-family: var(--display); font-weight: 500; font-size: 13.5px;
+  color: var(--ink); letter-spacing: -0.005em;
+  outline: none;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.entity .name .n[contenteditable="true"] {
+  background: var(--cream-2);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin: -1px -4px;
+  cursor: text;
+}
+.entity.active .name .n .badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  background: var(--ink); color: var(--paper);
+  padding: 1px 5px; border-radius: 3px;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+  font-weight: 400;
+}
+.entity .name .px {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.entity .ctrl-icons { display: flex; gap: 4px; color: var(--ink-3); }
+.entity .ctrl-icons button {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  background: transparent;
+  border: none; color: inherit;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.entity .ctrl-icons button:hover { background: var(--cream-2); color: var(--ink); }
+.entity .ctrl-icons button.hidden-eye { color: var(--ink-4); }
+.entity .ctrl-icons button.del-confirm { color: var(--warn); background: rgba(224,74,46,0.1); }
+.entity .ctrl-icons svg { width: 13px; height: 13px; }
+
+.add-entity {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 8px; padding: 11px 12px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 10px;
+  background: transparent;
+  font-family: var(--display); font-weight: 500; font-size: 13px;
+  color: var(--ink-2); cursor: pointer;
+  width: 100%;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.add-entity:hover:not(:disabled) { border-color: var(--ink); color: var(--ink); background: var(--paper); }
+.add-entity:disabled { opacity: 0.45; cursor: not-allowed; }
+.add-entity svg { width: 14px; height: 14px; }
+
+/* color picker popup */
+.color-popup {
+  position: absolute;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 12px 32px -8px rgba(40,30,15,0.25);
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 6px;
+  z-index: 100;
+}
+.color-popup.hidden { display: none; }
+.color-popup .c {
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: transform .1s;
+}
+.color-popup .c:hover { transform: scale(1.15); }
+.color-popup .c.current { border-color: var(--ink); }
+.color-popup .c.taken { opacity: 0.25; cursor: not-allowed; transform: none; }
+
+/* coverage stats */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stat {
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.stat .k {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+  letter-spacing: 0.04em; margin-bottom: 6px;
+}
+.stat .v {
+  font-family: var(--display); font-weight: 600; font-size: 20px;
+  letter-spacing: -0.02em; color: var(--ink);
+  display: flex; align-items: baseline; gap: 5px;
+}
+.stat .v small {
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  color: var(--ink-3); letter-spacing: 0.04em;
+}
+
+.coverage-bar {
+  margin-top: 14px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--cream-2);
+  display: flex; overflow: hidden;
+}
+.coverage-bar span { display: block; height: 100%; transition: width .25s ease; }
+.legend {
+  margin-top: 8px;
+  display: flex; flex-wrap: wrap; gap: 8px 14px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-2);
+}
+.legend .leg { display: inline-flex; align-items: center; gap: 5px; }
+.legend i {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 2px;
+}
+
+.export-note {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--cream-2);
+  border: 1px dashed var(--line-strong);
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-2); line-height: 1.55;
+}
+.export-note b { color: var(--ink); font-weight: 600; }
+.export-note .ls { display: block; margin-top: 6px; color: var(--ink-3); }
+
+/* ============ STATUS BAR ============ */
+.statusbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-family: var(--mono); font-size: 11px;
+  color: var(--ink-3); letter-spacing: 0.02em;
+}
+.statusbar .grp { display: flex; gap: 18px; }
+.statusbar .grp b { color: var(--ink); font-weight: 600; }
+.statusbar .dot {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ink-4); margin-right: 6px; vertical-align: 1px;
+}
+.statusbar.live .dot { background: var(--lime); }
+.statusbar a { border-bottom: 1px dotted var(--ink-4); color: var(--ink-2); padding-bottom: 1px; }
+.statusbar a:hover { color: var(--violet); border-color: var(--violet); }
+
+/* toast */
+.toast {
+  position: fixed;
+  bottom: 56px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--mono); font-size: 12px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  opacity: 0;
+  transition: opacity .2s, transform .2s;
+  pointer-events: none;
+  z-index: 200;
+  box-shadow: 0 8px 24px -6px rgba(0,0,0,0.25);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.warn { background: var(--warn); }
+
+input[type="file"] { display: none; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ TOPBAR ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <div class="crumb"><a href="../../index.html">jaeggerr</a> &nbsp;/&nbsp; <a href="../../index.html">tools</a> &nbsp;/&nbsp; mask-cutter</div>
+        <div class="tool">mask-cutter <em>paint cut-outs, export a ZIP</em></div>
+      </div>
+    </div>
+
+    <div class="filepill" id="filepill">
+      <span class="dot"></span>
+      <b id="filename">no image</b>
+      <span class="dim" id="filedims"></span>
+    </div>
+
+    <div class="actions">
+      <button class="btn-ghost" id="btnImport" title="Import image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        import
+      </button>
+      <button class="btn-ghost" id="btnReset" title="Clear all cut-outs" disabled>reset mask</button>
+      <button class="btn-export" id="btnExport" disabled>
+        <span class="label">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          export ZIP <span class="count" id="exportCount">0</span>
+        </span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+
+    <!-- LEFT TOOL RAIL -->
+    <aside class="rail">
+      <button class="tool-btn active" data-tool="brush" title="Brush (B)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 14.5L3 21l6.5-6.5"/><path d="M14 4l6 6-7.5 7.5-6-6z"/><path d="M14 4l3-3 3 3-3 3"/></svg>
+        <span class="kbd">B</span>
+      </button>
+      <button class="tool-btn" data-tool="eraser" title="Eraser (E)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14L8.6 24H4v-4.6L14.4 9l4.6 4.6z"/><path d="M14 4l6 6-3.5 3.5L10 6.5z"/></svg>
+        <span class="kbd">E</span>
+      </button>
+      <button class="tool-btn" data-tool="bucket" title="Bucket fill (G)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l8-8 9 9-8 8a2 2 0 0 1-3 0L5 14a2 2 0 0 1 0-3z"/><path d="M5 11l9 9"/><circle cx="20" cy="17" r="2"/></svg>
+        <span class="kbd">G</span>
+      </button>
+      <button class="tool-btn" data-tool="pipette" title="Pipette (I)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4l6 6"/><path d="M17 7l-9 9-4 1 1-4 9-9z"/></svg>
+        <span class="kbd">I</span>
+      </button>
+      <div class="tool-sep"></div>
+      <button class="tool-btn" id="btnUndo" title="Undo (⌘Z)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 7 3 13 9 13"/><path d="M3 13l4-4a8 8 0 0 1 13 4"/></svg>
+      </button>
+      <button class="tool-btn" id="btnRedo" title="Redo (⇧⌘Z)" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 7 21 13 15 13"/><path d="M21 13l-4-4a8 8 0 0 0-13 4"/></svg>
+      </button>
+    </aside>
+
+    <!-- CANVAS -->
+    <section class="canvas-wrap" id="canvasWrap">
+
+      <!-- Empty state -->
+      <div class="empty" id="empty">
+        <div class="empty-card" id="dropzone">
+          <div class="glyph"><i></i><i></i><i></i><i></i><i></i></div>
+          <h2>Drop an image to get started</h2>
+          <p>You create one <b>entity</b> per cut-out (head, arm, background…), pick a colour, then paint on top. When you're done, a <b>ZIP</b> with one PNG per entity — each cropped to its region, transparent elsewhere.</p>
+          <button class="open-btn" id="btnEmpty">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            open an image
+          </button>
+        </div>
+        <div class="empty-hint">
+          <span><b>drop</b> a file here</span>
+          <span>·</span>
+          <span>or <span class="key">⌘O</span> to open</span>
+          <span>·</span>
+          <span>formats: png, jpg, webp, gif</span>
+        </div>
+      </div>
+
+      <!-- Canvas viewport -->
+      <div class="canvas-viewport hidden" id="viewport">
+        <div class="canvas-stack" id="canvasStack">
+          <canvas id="srcCanvas"></canvas>
+          <canvas id="overlayCanvas"></canvas>
+          <canvas id="cursorCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- Floating controls (hidden until image loaded) -->
+      <div class="zoom-badge hidden" id="zoomBadge">
+        <button id="zoomOut" title="zoom out">−</button>
+        <b id="zoomLabel">100%</b>
+        <button id="zoomIn" title="zoom in">+</button>
+        <button class="fit" id="zoomFit" title="fit to screen">fit</button>
+      </div>
+
+      <div class="canvas-controls hidden" id="canvasControls">
+        <div class="ctrl">
+          <span class="label">SIZE</span>
+          <div class="slider" id="sliderSize" data-min="1" data-max="200">
+            <span class="fill"></span>
+            <span class="knob"></span>
+          </div>
+          <span class="v" id="sizeVal">24 px</span>
+        </div>
+        <div class="ctrl-sep"></div>
+        <div class="ctrl">
+          <span class="label">OVERLAY</span>
+          <div class="slider" id="sliderOpacity" data-min="0" data-max="100">
+            <span class="fill"></span>
+            <span class="knob"></span>
+          </div>
+          <span class="v" id="opacityVal">55%</span>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- RIGHT PANEL -->
+    <aside class="panel">
+
+      <div class="panel-section">
+        <div class="panel-h">
+          <h2>Entities</h2>
+          <span class="meta" id="entitiesMeta">0 · exclusive colours</span>
+        </div>
+
+        <div class="entities" id="entitiesList">
+          <div class="empty-list">
+            No entities.<br>
+            <b>+ add</b> to create one.
+          </div>
+        </div>
+
+        <button class="add-entity" id="btnAddEntity" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          add entity
+        </button>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-h">
+          <h2>Coverage</h2>
+          <span class="meta" id="coverageMeta">—</span>
+        </div>
+
+        <div class="stats">
+          <div class="stat">
+            <div class="k">PIXELS PAINTED</div>
+            <div class="v"><span id="statPx">0</span> <small>px</small></div>
+          </div>
+          <div class="stat">
+            <div class="k">OF IMAGE</div>
+            <div class="v"><span id="statPct">0</span> <small>%</small></div>
+          </div>
+        </div>
+
+        <div class="coverage-bar" id="coverageBar"></div>
+        <div class="legend" id="coverageLegend"></div>
+
+        <div class="export-note">
+          <b>Export:</b> 1 PNG per entity, cropped to bbox, transparent elsewhere. Bundled in a ZIP.
+          <span class="ls" id="exportSummary">— add an image to get started</span>
+        </div>
+      </div>
+
+    </aside>
+
+  </div>
+
+  <!-- ============ STATUS ============ -->
+  <footer class="statusbar" id="statusbar">
+    <div class="grp">
+      <span><span class="dot"></span><span id="statusState">waiting for an image</span></span>
+      <span id="statusFile" hidden>file <b id="statusFileName">—</b></span>
+      <span id="statusDims" hidden></span>
+    </div>
+    <div class="grp">
+      <span id="statusBrush" hidden>brush <b id="statusBrushName">—</b></span>
+      <span id="statusSize" hidden>Ø<b id="statusSizeVal">24</b></span>
+      <span id="statusCoords" hidden>x <b id="statusX">0</b> · y <b id="statusY">0</b></span>
+      <span id="statusZoom" hidden><b id="statusZoomVal">100%</b></span>
+      <span><a href="../../index.html">↩ back to hub</a></span>
+    </div>
+  </footer>
+
+</div>
+
+<!-- color popup template (moved by JS) -->
+<div class="color-popup hidden" id="colorPopup"></div>
+
+<!-- toast -->
+<div class="toast" id="toast"></div>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script>
+'use strict';
+
+// ============ CONFIG ============
+const PALETTE = [
+  '#FF8A5B', '#C9E265', '#B14CFF', '#20C7E5', '#FF4F8B', '#FFD166',
+  '#6BFFC8', '#FF6F3C', '#7E6BFF', '#3CC9D6', '#A2D86A', '#FF93C9'
+];
+const BUCKET_TOLERANCE = 32;
+const HISTORY_LIMIT = 30;
+
+// ============ STATE ============
+const state = {
+  image: null,
+  imgW: 0,
+  imgH: 0,
+  mask: null,            // Uint8Array, length = imgW * imgH
+  srcData: null,         // ImageData of source (cached for bucket fill)
+  entities: [],          // [{id, name, color, visible, pixelCount}]
+  activeEntityId: 0,
+  nextEntityId: 1,
+  tool: 'brush',
+  brushSize: 24,
+  overlayOpacity: 0.55,
+  zoom: 1,
+  history: [],
+  historyIdx: -1,
+  isPainting: false,
+  lastPaint: null,       // {x, y} last mouse position during stroke (image coords)
+  cursor: null,          // {x, y} image coords for cursor display
+  fileName: '',
+  fileSize: 0,
+  pendingDelete: null,   // entity id awaiting confirm
+};
+
+// ============ DOM ============
+const $ = (id) => document.getElementById(id);
+const els = {
+  empty: $('empty'),
+  dropzone: $('dropzone'),
+  viewport: $('viewport'),
+  stack: $('canvasStack'),
+  src: $('srcCanvas'),
+  overlay: $('overlayCanvas'),
+  cursor: $('cursorCanvas'),
+  fileInput: $('fileInput'),
+  btnImport: $('btnImport'),
+  btnReset: $('btnReset'),
+  btnExport: $('btnExport'),
+  btnEmpty: $('btnEmpty'),
+  btnAddEntity: $('btnAddEntity'),
+  btnUndo: $('btnUndo'),
+  btnRedo: $('btnRedo'),
+  entitiesList: $('entitiesList'),
+  entitiesMeta: $('entitiesMeta'),
+  filepill: $('filepill'),
+  filename: $('filename'),
+  filedims: $('filedims'),
+  zoomBadge: $('zoomBadge'),
+  zoomLabel: $('zoomLabel'),
+  zoomIn: $('zoomIn'),
+  zoomOut: $('zoomOut'),
+  zoomFit: $('zoomFit'),
+  canvasControls: $('canvasControls'),
+  sliderSize: $('sliderSize'),
+  sliderOpacity: $('sliderOpacity'),
+  sizeVal: $('sizeVal'),
+  opacityVal: $('opacityVal'),
+  statPx: $('statPx'),
+  statPct: $('statPct'),
+  coverageBar: $('coverageBar'),
+  coverageLegend: $('coverageLegend'),
+  coverageMeta: $('coverageMeta'),
+  exportCount: $('exportCount'),
+  exportSummary: $('exportSummary'),
+  toast: $('toast'),
+  colorPopup: $('colorPopup'),
+  statusbar: $('statusbar'),
+  statusState: $('statusState'),
+  statusFile: $('statusFile'),
+  statusFileName: $('statusFileName'),
+  statusDims: $('statusDims'),
+  statusBrush: $('statusBrush'),
+  statusBrushName: $('statusBrushName'),
+  statusSize: $('statusSize'),
+  statusSizeVal: $('statusSizeVal'),
+  statusCoords: $('statusCoords'),
+  statusX: $('statusX'),
+  statusY: $('statusY'),
+  statusZoom: $('statusZoom'),
+  statusZoomVal: $('statusZoomVal'),
+  canvasWrap: $('canvasWrap'),
+};
+const srcCtx = els.src.getContext('2d');
+const overlayCtx = els.overlay.getContext('2d');
+const cursorCtx = els.cursor.getContext('2d');
+
+// ============ UTILS ============
+function hexToRgb(hex) {
+  const h = hex.replace('#', '');
+  return [parseInt(h.substr(0,2),16), parseInt(h.substr(2,2),16), parseInt(h.substr(4,2),16)];
+}
+function fmtNum(n) { return n.toLocaleString('en-US'); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+function toast(msg, warn = false) {
+  els.toast.textContent = msg;
+  els.toast.classList.toggle('warn', warn);
+  els.toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => els.toast.classList.remove('show'), 1800);
+}
+
+function getEntity(id) { return state.entities.find(e => e.id === id); }
+function activeEntity() { return getEntity(state.activeEntityId); }
+
+// ============ IMAGE LOAD ============
+function loadImageFromFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    toast('unsupported format', true);
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      installImage(img, file.name, file.size);
+    };
+    img.onerror = () => toast('could not read image', true);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function installImage(img, fileName, fileSize) {
+  state.image = img;
+  state.imgW = img.naturalWidth;
+  state.imgH = img.naturalHeight;
+  state.fileName = fileName;
+  state.fileSize = fileSize;
+  state.mask = new Uint8Array(state.imgW * state.imgH);
+  state.history = [];
+  state.historyIdx = -1;
+  state.entities = [];
+  state.activeEntityId = 0;
+  state.nextEntityId = 1;
+  state.pendingDelete = null;
+
+  // resize canvases (native resolution)
+  for (const c of [els.src, els.overlay, els.cursor]) {
+    c.width = state.imgW;
+    c.height = state.imgH;
+  }
+  srcCtx.drawImage(img, 0, 0);
+  state.srcData = srcCtx.getImageData(0, 0, state.imgW, state.imgH);
+  overlayCtx.clearRect(0, 0, state.imgW, state.imgH);
+  cursorCtx.clearRect(0, 0, state.imgW, state.imgH);
+
+  // swap empty → viewport
+  els.empty.classList.add('hidden');
+  els.viewport.classList.remove('hidden');
+  els.zoomBadge.classList.remove('hidden');
+  els.canvasControls.classList.remove('hidden');
+
+  // enable controls
+  els.btnReset.disabled = false;
+  els.btnAddEntity.disabled = false;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.disabled = false);
+
+  // file pill
+  els.filepill.classList.add('live');
+  els.filename.textContent = fileName;
+  els.filedims.textContent = `· ${state.imgW} × ${state.imgH}`;
+  els.statusState.textContent = 'ready';
+  els.statusbar.classList.add('live');
+  els.statusFile.hidden = false;
+  els.statusFileName.textContent = fileName;
+  els.statusDims.hidden = false;
+  els.statusDims.textContent = `${state.imgW} × ${state.imgH} px`;
+  els.statusBrush.hidden = false;
+  els.statusSize.hidden = false;
+  els.statusCoords.hidden = false;
+  els.statusZoom.hidden = false;
+
+  fitZoom();
+  // auto-create a first entity to lower friction
+  addEntity();
+  // record the initial (empty) mask as the bottom of the undo stack
+  pushHistory();
+  updateUI();
+}
+
+// ============ ENTITIES ============
+function nextUnusedColor() {
+  const used = new Set(state.entities.map(e => e.color));
+  for (const c of PALETTE) if (!used.has(c)) return c;
+  return PALETTE[state.entities.length % PALETTE.length];
+}
+
+function addEntity(name) {
+  if (!state.image) return;
+  const id = state.nextEntityId++;
+  const ent = {
+    id,
+    name: name || `entity ${id}`,
+    color: nextUnusedColor(),
+    visible: true,
+    pixelCount: 0,
+  };
+  state.entities.push(ent);
+  state.activeEntityId = id;
+  state.pendingDelete = null;
+  updateUI();
+}
+
+function deleteEntity(id) {
+  for (let i = 0; i < state.mask.length; i++) {
+    if (state.mask[i] === id) state.mask[i] = 0;
+  }
+  state.entities = state.entities.filter(e => e.id !== id);
+  if (state.activeEntityId === id) {
+    state.activeEntityId = state.entities[0]?.id || 0;
+  }
+  state.pendingDelete = null;
+  rerasterizeFull();
+  recountAll();
+  pushHistory();
+  updateUI();
+}
+
+function toggleVisibility(id) {
+  const ent = getEntity(id);
+  if (!ent) return;
+  ent.visible = !ent.visible;
+  rerasterizeFull();
+  updateUI();
+}
+
+function renameEntity(id, name) {
+  const ent = getEntity(id);
+  if (!ent) return;
+  const clean = (name || '').trim();
+  ent.name = clean || ent.name;
+  updateUI();
+}
+
+function setEntityColor(id, color) {
+  const ent = getEntity(id);
+  if (!ent) return;
+  // refuse if already taken by another entity
+  if (state.entities.some(e => e.id !== id && e.color === color)) {
+    toast('colour already taken', true);
+    return;
+  }
+  ent.color = color;
+  rerasterizeFull();
+  updateUI();
+}
+
+// ============ MASK / OVERLAY ============
+function paintCircle(cx, cy, radius, eraser = false) {
+  const x0 = Math.max(0, Math.floor(cx - radius));
+  const y0 = Math.max(0, Math.floor(cy - radius));
+  const x1 = Math.min(state.imgW - 1, Math.ceil(cx + radius));
+  const y1 = Math.min(state.imgH - 1, Math.ceil(cy + radius));
+  if (x1 < x0 || y1 < y0) return null;
+  const r2 = radius * radius;
+  const target = eraser ? 0 : state.activeEntityId;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx*dx + dy*dy <= r2) {
+        state.mask[y * state.imgW + x] = target;
+      }
+    }
+  }
+  return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+}
+
+function paintLine(x0, y0, x1, y1, radius, eraser = false) {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  const step = Math.max(1, radius / 3);
+  const steps = Math.max(1, Math.ceil(dist / step));
+  let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const region = paintCircle(x0 + dx*t, y0 + dy*t, radius, eraser);
+    if (region) {
+      bx0 = Math.min(bx0, region.x);
+      by0 = Math.min(by0, region.y);
+      bx1 = Math.max(bx1, region.x + region.w);
+      by1 = Math.max(by1, region.y + region.h);
+    }
+  }
+  if (bx0 === Infinity) return;
+  rerasterizeRegion(bx0, by0, bx1 - bx0, by1 - by0);
+}
+
+function rerasterizeRegion(x, y, w, h) {
+  if (w <= 0 || h <= 0) return;
+  const imgData = overlayCtx.createImageData(w, h);
+  const data = imgData.data;
+  const colorCache = new Map();
+  for (const ent of state.entities) {
+    colorCache.set(ent.id, ent.visible ? hexToRgb(ent.color) : null);
+  }
+  const imgW = state.imgW;
+  for (let j = 0; j < h; j++) {
+    const rowStart = (y + j) * imgW;
+    for (let i = 0; i < w; i++) {
+      const entId = state.mask[rowStart + (x + i)];
+      const di = (j * w + i) * 4;
+      if (entId === 0) { data[di + 3] = 0; continue; }
+      const rgb = colorCache.get(entId);
+      if (!rgb) { data[di + 3] = 0; continue; }
+      data[di] = rgb[0]; data[di+1] = rgb[1]; data[di+2] = rgb[2]; data[di+3] = 255;
+    }
+  }
+  overlayCtx.clearRect(x, y, w, h);
+  overlayCtx.putImageData(imgData, x, y);
+}
+
+function rerasterizeFull() {
+  if (!state.image) return;
+  rerasterizeRegion(0, 0, state.imgW, state.imgH);
+}
+
+function clearMask() {
+  if (!state.mask) return;
+  state.mask.fill(0);
+  rerasterizeFull();
+  recountAll();
+  pushHistory();
+  updateUI();
+}
+
+// ============ BUCKET FILL (on source colour) ============
+function bucketFill(x, y) {
+  if (!state.image || !state.srcData || !state.activeEntityId) return;
+  x = Math.floor(x); y = Math.floor(y);
+  if (x < 0 || y < 0 || x >= state.imgW || y >= state.imgH) return;
+  const src = state.srcData.data;
+  const startIdx = (y * state.imgW + x) * 4;
+  const tr = src[startIdx], tg = src[startIdx + 1], tb = src[startIdx + 2], ta = src[startIdx + 3];
+  const tol2 = BUCKET_TOLERANCE * BUCKET_TOLERANCE;
+  const visited = new Uint8Array(state.imgW * state.imgH);
+  const stack = [x, y];
+  const target = state.activeEntityId;
+  let count = 0;
+  while (stack.length) {
+    const cy = stack.pop(); const cx = stack.pop();
+    if (cx < 0 || cy < 0 || cx >= state.imgW || cy >= state.imgH) continue;
+    const idx = cy * state.imgW + cx;
+    if (visited[idx]) continue;
+    visited[idx] = 1;
+    const si = idx * 4;
+    const dr = src[si] - tr, dg = src[si+1] - tg, db = src[si+2] - tb, da = src[si+3] - ta;
+    if (dr*dr + dg*dg + db*db + da*da > tol2) continue;
+    state.mask[idx] = target;
+    count++;
+    stack.push(cx + 1, cy);
+    stack.push(cx - 1, cy);
+    stack.push(cx, cy + 1);
+    stack.push(cx, cy - 1);
+  }
+  rerasterizeFull();
+  recountAll();
+  pushHistory();
+  updateUI();
+  toast(`bucket: ${fmtNum(count)} px added to "${activeEntity()?.name}"`);
+}
+
+// ============ PIPETTE ============
+function pipetteAt(x, y) {
+  x = Math.floor(x); y = Math.floor(y);
+  if (x < 0 || y < 0 || x >= state.imgW || y >= state.imgH) return;
+  const entId = state.mask[y * state.imgW + x];
+  if (entId === 0) {
+    toast('pixel not painted', true);
+    return;
+  }
+  state.activeEntityId = entId;
+  state.tool = 'brush';
+  updateUI();
+  toast(`active: "${getEntity(entId)?.name}"`);
+}
+
+// ============ HISTORY ============
+// Convention: history[k] is a snapshot of the mask AFTER edit k completed.
+// historyIdx points to the currently displayed state. Pushed AFTER each edit.
+function pushHistory() {
+  if (!state.mask) return;
+  // truncate redo branch
+  state.history = state.history.slice(0, state.historyIdx + 1);
+  state.history.push(new Uint8Array(state.mask));
+  if (state.history.length > HISTORY_LIMIT) {
+    state.history.shift();
+  }
+  state.historyIdx = state.history.length - 1;
+}
+function undo() {
+  if (state.historyIdx <= 0) return;
+  state.historyIdx--;
+  state.mask.set(state.history[state.historyIdx]);
+  rerasterizeFull();
+  recountAll();
+  updateUI();
+}
+function redo() {
+  if (state.historyIdx >= state.history.length - 1) return;
+  state.historyIdx++;
+  state.mask.set(state.history[state.historyIdx]);
+  rerasterizeFull();
+  recountAll();
+  updateUI();
+}
+
+// ============ COUNT / STATS ============
+function recountAll() {
+  for (const ent of state.entities) ent.pixelCount = 0;
+  if (!state.mask) return;
+  const byId = new Map(state.entities.map(e => [e.id, e]));
+  for (let i = 0; i < state.mask.length; i++) {
+    const id = state.mask[i];
+    if (id !== 0) {
+      const e = byId.get(id);
+      if (e) e.pixelCount++;
+    }
+  }
+}
+
+// ============ ZOOM ============
+function setZoom(z) {
+  state.zoom = clamp(z, 0.1, 8);
+  els.stack.style.width = (state.imgW * state.zoom) + 'px';
+  els.stack.style.height = (state.imgH * state.zoom) + 'px';
+  els.src.style.width = (state.imgW * state.zoom) + 'px';
+  els.src.style.height = (state.imgH * state.zoom) + 'px';
+  els.overlay.style.width = (state.imgW * state.zoom) + 'px';
+  els.overlay.style.height = (state.imgH * state.zoom) + 'px';
+  els.cursor.style.width = (state.imgW * state.zoom) + 'px';
+  els.cursor.style.height = (state.imgH * state.zoom) + 'px';
+  const pct = Math.round(state.zoom * 100) + '%';
+  els.zoomLabel.textContent = pct;
+  els.statusZoomVal.textContent = pct;
+}
+function fitZoom() {
+  const wrap = els.canvasWrap.getBoundingClientRect();
+  const padding = 80;
+  const sx = (wrap.width - padding) / state.imgW;
+  const sy = (wrap.height - padding) / state.imgH;
+  setZoom(Math.min(1, Math.min(sx, sy)));
+}
+
+// ============ RENDER UI ============
+function updateUI() {
+  // entities list
+  if (state.entities.length === 0) {
+    els.entitiesList.innerHTML = '<div class="empty-list">No entities.<br><b>+ add</b> to create one.</div>';
+  } else {
+    els.entitiesList.innerHTML = state.entities.map(ent => {
+      const isActive = ent.id === state.activeEntityId;
+      const pendingDel = state.pendingDelete === ent.id;
+      return `
+        <div class="entity ${isActive ? 'active' : ''}" data-id="${ent.id}">
+          <span class="swatch" style="background:${ent.color}" data-action="color"></span>
+          <div class="name">
+            <span class="n" data-action="rename">${escapeHtml(ent.name)}${isActive ? '<span class="badge">active</span>' : ''}</span>
+            <span class="px">${ent.pixelCount > 0 ? fmtNum(ent.pixelCount) + ' px' : '— empty'}</span>
+          </div>
+          <div class="ctrl-icons">
+            <button data-action="toggle" class="${ent.visible ? '' : 'hidden-eye'}" title="Visibility">
+              ${ent.visible ? eyeOn() : eyeOff()}
+            </button>
+            <button data-action="delete" class="${pendingDel ? 'del-confirm' : ''}" title="${pendingDel ? 'click again to confirm' : 'delete'}">
+              ${trash()}
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  els.entitiesMeta.textContent = `${state.entities.length} · exclusive colours`;
+
+  // coverage stats
+  const totalPx = state.imgW * state.imgH;
+  const paintedPx = state.entities.reduce((s, e) => s + e.pixelCount, 0);
+  const pct = totalPx > 0 ? (paintedPx / totalPx * 100) : 0;
+  els.statPx.textContent = fmtNum(paintedPx);
+  els.statPct.textContent = pct.toFixed(1);
+  els.coverageMeta.textContent = paintedPx > 0 ? 'live' : '—';
+
+  // coverage bar + legend
+  els.coverageBar.innerHTML = state.entities
+    .filter(e => e.visible && e.pixelCount > 0)
+    .map(e => `<span style="width:${(e.pixelCount / totalPx * 100)}%;background:${e.color}" title="${escapeHtml(e.name)} ${(e.pixelCount/totalPx*100).toFixed(1)}%"></span>`)
+    .join('');
+  els.coverageLegend.innerHTML = state.entities
+    .filter(e => e.pixelCount > 0)
+    .map(e => `<span class="leg"><i style="background:${e.color}"></i>${escapeHtml(e.name)} ${(e.pixelCount/totalPx*100).toFixed(1)}%</span>`)
+    .join('') || '<span style="color:var(--ink-3)">nothing painted yet</span>';
+
+  // export button
+  const exportable = state.entities.filter(e => e.pixelCount > 0);
+  els.exportCount.textContent = exportable.length;
+  els.btnExport.disabled = exportable.length === 0;
+  els.exportSummary.textContent = exportable.length === 0
+    ? '— paint at least one entity to enable export'
+    : `${state.fileName.replace(/\.[^.]+$/, '')}_masks.zip  ·  ${exportable.length} PNG`;
+
+  // history buttons
+  els.btnUndo.disabled = state.historyIdx <= 0;
+  els.btnRedo.disabled = state.historyIdx >= state.history.length - 1;
+
+  // tool button active
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+    b.classList.toggle('active', b.dataset.tool === state.tool);
+  });
+  // cursor for canvas-stack
+  els.stack.classList.remove('crosshair', 'eraser', 'bucket', 'pipette');
+  if (state.tool === 'brush') els.stack.classList.add('crosshair');
+  else if (state.tool === 'eraser') els.stack.classList.add('eraser');
+  else if (state.tool === 'bucket') els.stack.classList.add('bucket');
+  else if (state.tool === 'pipette') els.stack.classList.add('pipette');
+
+  // status bar
+  const ent = activeEntity();
+  if (ent) {
+    els.statusBrushName.textContent = ent.name;
+    els.statusBrushName.style.color = ent.color;
+  } else {
+    els.statusBrushName.textContent = '—';
+    els.statusBrushName.style.color = '';
+  }
+  els.statusSizeVal.textContent = state.brushSize;
+
+  // sliders visual
+  updateSliderVisual(els.sliderSize, state.brushSize, 1, 200);
+  updateSliderVisual(els.sliderOpacity, Math.round(state.overlayOpacity * 100), 0, 100);
+  els.sizeVal.textContent = state.brushSize + ' px';
+  els.opacityVal.textContent = Math.round(state.overlayOpacity * 100) + '%';
+
+  // overlay css opacity
+  els.overlay.style.opacity = state.overlayOpacity;
+}
+
+function updateSliderVisual(el, val, min, max) {
+  const pct = (val - min) / (max - min) * 100;
+  el.querySelector('.fill').style.width = pct + '%';
+  el.querySelector('.knob').style.left = pct + '%';
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function eyeOn() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>`;
+}
+function eyeOff() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 19c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+}
+function trash() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>`;
+}
+
+// ============ EXPORT ============
+async function exportZip() {
+  const exportable = state.entities.filter(e => e.pixelCount > 0);
+  if (exportable.length === 0) return;
+  els.btnExport.classList.add('busy');
+  await new Promise(r => setTimeout(r, 16)); // let UI update
+  try {
+    const zip = new JSZip();
+    let totalBytes = 0;
+    const used = new Set();
+    for (const ent of exportable) {
+      const blob = await renderEntityPNG(ent);
+      if (!blob) continue;
+      let name = sanitizeFileName(ent.name);
+      let final = name;
+      let i = 2;
+      while (used.has(final + '.png')) final = `${name}_${i++}`;
+      used.add(final + '.png');
+      zip.file(final + '.png', blob);
+      totalBytes += blob.size;
+    }
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const baseName = state.fileName.replace(/\.[^.]+$/, '') || 'image';
+    triggerDownload(zipBlob, `${baseName}_masks.zip`);
+    toast(`zip exported · ${exportable.length} PNG · ${formatBytes(zipBlob.size)}`);
+  } catch (err) {
+    console.error(err);
+    toast('export failed — see console', true);
+  } finally {
+    els.btnExport.classList.remove('busy');
+  }
+}
+
+async function renderEntityPNG(ent) {
+  // compute bbox
+  let minX = state.imgW, minY = state.imgH, maxX = -1, maxY = -1;
+  const imgW = state.imgW;
+  for (let y = 0; y < state.imgH; y++) {
+    const row = y * imgW;
+    for (let x = 0; x < imgW; x++) {
+      if (state.mask[row + x] === ent.id) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) return null;
+  const w = maxX - minX + 1;
+  const h = maxY - minY + 1;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.drawImage(els.src, -minX, -minY);
+  const data = ctx.getImageData(0, 0, w, h);
+  const px = data.data;
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const fullIdx = (minY + j) * imgW + (minX + i);
+      if (state.mask[fullIdx] !== ent.id) {
+        px[(j * w + i) * 4 + 3] = 0;
+      }
+    }
+  }
+  ctx.putImageData(data, 0, 0);
+  return new Promise(resolve => c.toBlob(b => resolve(b), 'image/png'));
+}
+
+function sanitizeFileName(s) {
+  // strip combining diacritical marks (U+0300..U+036F) then non-ASCII-safe chars
+  const stripped = s.normalize('NFKD').replace(/[̀-ͯ]/g, '');
+  return stripped.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '').toLowerCase() || 'untitled';
+}
+function triggerDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024*1024) return (b / 1024).toFixed(1) + ' kB';
+  return (b / (1024*1024)).toFixed(2) + ' MB';
+}
+
+// ============ INPUT: MOUSE ============
+function getImageCoords(e) {
+  const r = els.stack.getBoundingClientRect();
+  const x = (e.clientX - r.left) / state.zoom;
+  const y = (e.clientY - r.top) / state.zoom;
+  return { x, y };
+}
+
+let lastUiUpdate = 0;
+els.stack.addEventListener('mousedown', e => {
+  if (!state.image || e.button !== 0) return;
+  const { x, y } = getImageCoords(e);
+  if (state.tool === 'bucket') {
+    bucketFill(x, y);
+    return;
+  }
+  if (state.tool === 'pipette') {
+    pipetteAt(x, y);
+    return;
+  }
+  if (state.tool === 'brush' && !state.activeEntityId) {
+    toast('create an entity first', true);
+    return;
+  }
+  if (state.tool === 'brush' || state.tool === 'eraser') {
+    state.isPainting = true;
+    state.lastPaint = { x, y };
+    state.strokeDidPaint = false;
+    paintLine(x, y, x, y, state.brushSize / 2, state.tool === 'eraser');
+    state.strokeDidPaint = true;
+  }
+});
+
+window.addEventListener('mousemove', e => {
+  if (!state.image) return;
+  const r = els.stack.getBoundingClientRect();
+  const x = (e.clientX - r.left) / state.zoom;
+  const y = (e.clientY - r.top) / state.zoom;
+  state.cursor = { x, y };
+  updateCursorCanvas();
+  // status coords
+  if (x >= 0 && y >= 0 && x < state.imgW && y < state.imgH) {
+    els.statusX.textContent = Math.floor(x);
+    els.statusY.textContent = Math.floor(y);
+  }
+  if (state.isPainting && state.lastPaint) {
+    paintLine(state.lastPaint.x, state.lastPaint.y, x, y, state.brushSize / 2, state.tool === 'eraser');
+    state.lastPaint = { x, y };
+    // throttle stat update during drag (recount is O(N))
+    const now = performance.now();
+    if (now - lastUiUpdate > 120) {
+      recountAll(); updateUI(); lastUiUpdate = now;
+    }
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (state.isPainting) {
+    state.isPainting = false;
+    state.lastPaint = null;
+    recountAll();
+    if (state.strokeDidPaint) pushHistory();
+    state.strokeDidPaint = false;
+    updateUI();
+  }
+});
+
+// cursor preview circle on the cursor canvas
+function updateCursorCanvas() {
+  if (!state.image || !state.cursor) return;
+  cursorCtx.clearRect(0, 0, state.imgW, state.imgH);
+  if (state.tool !== 'brush' && state.tool !== 'eraser') return;
+  const r = state.brushSize / 2;
+  cursorCtx.beginPath();
+  cursorCtx.arc(state.cursor.x, state.cursor.y, r, 0, Math.PI * 2);
+  cursorCtx.strokeStyle = state.tool === 'eraser' ? '#E04A2E' : (activeEntity()?.color || '#1a1714');
+  cursorCtx.lineWidth = Math.max(1, 1.5 / state.zoom);
+  cursorCtx.stroke();
+  cursorCtx.beginPath();
+  cursorCtx.arc(state.cursor.x, state.cursor.y, r + Math.max(1, 1/state.zoom), 0, Math.PI * 2);
+  cursorCtx.strokeStyle = 'rgba(255,255,255,0.7)';
+  cursorCtx.lineWidth = Math.max(1, 1 / state.zoom);
+  cursorCtx.stroke();
+}
+
+// ============ WHEEL ZOOM ============
+els.canvasWrap.addEventListener('wheel', e => {
+  if (!state.image) return;
+  if (!(e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > 0)) return;
+  e.preventDefault();
+  // zoom around mouse position
+  const wrap = els.canvasWrap.getBoundingClientRect();
+  const mx = e.clientX - wrap.left + els.canvasWrap.scrollLeft;
+  const my = e.clientY - wrap.top + els.canvasWrap.scrollTop;
+  const oldZoom = state.zoom;
+  const factor = e.deltaY > 0 ? 0.9 : 1.1;
+  setZoom(state.zoom * factor);
+  // adjust scroll to keep mouse anchor stable
+  const ratio = state.zoom / oldZoom;
+  els.canvasWrap.scrollLeft = mx * ratio - (e.clientX - wrap.left);
+  els.canvasWrap.scrollTop = my * ratio - (e.clientY - wrap.top);
+  updateCursorCanvas();
+}, { passive: false });
+
+// ============ SLIDERS ============
+function bindSlider(el, getValue, setValue, min, max) {
+  let dragging = false;
+  const onMove = (e) => {
+    const r = el.getBoundingClientRect();
+    const pct = clamp((e.clientX - r.left) / r.width, 0, 1);
+    const v = Math.round(min + (max - min) * pct);
+    setValue(v);
+    updateUI();
+  };
+  el.addEventListener('mousedown', e => {
+    dragging = true; onMove(e);
+    const up = () => {
+      dragging = false;
+      window.removeEventListener('mousemove', mv);
+      window.removeEventListener('mouseup', up);
+    };
+    const mv = (ev) => { if (dragging) onMove(ev); };
+    window.addEventListener('mousemove', mv);
+    window.addEventListener('mouseup', up);
+  });
+}
+bindSlider(els.sliderSize, () => state.brushSize, v => state.brushSize = v, 1, 200);
+bindSlider(els.sliderOpacity, () => state.overlayOpacity * 100, v => state.overlayOpacity = v / 100, 0, 100);
+
+// ============ COLOR POPUP ============
+let popupTargetId = null;
+function openColorPopup(swatch, entId) {
+  popupTargetId = entId;
+  const ent = getEntity(entId);
+  const taken = new Set(state.entities.filter(e => e.id !== entId).map(e => e.color));
+  els.colorPopup.innerHTML = PALETTE.map(c => `
+    <div class="c ${c === ent.color ? 'current' : ''} ${taken.has(c) ? 'taken' : ''}"
+         style="background:${c}" data-color="${c}"></div>
+  `).join('');
+  const r = swatch.getBoundingClientRect();
+  els.colorPopup.style.left = (r.left) + 'px';
+  els.colorPopup.style.top = (r.bottom + 6) + 'px';
+  els.colorPopup.classList.remove('hidden');
+}
+function closeColorPopup() {
+  els.colorPopup.classList.add('hidden');
+  popupTargetId = null;
+}
+els.colorPopup.addEventListener('click', e => {
+  const c = e.target.closest('.c');
+  if (!c || c.classList.contains('taken') || popupTargetId == null) return;
+  setEntityColor(popupTargetId, c.dataset.color);
+  closeColorPopup();
+});
+document.addEventListener('mousedown', e => {
+  if (!els.colorPopup.contains(e.target) && !e.target.closest('.swatch')) {
+    closeColorPopup();
+  }
+});
+
+// ============ ENTITY LIST EVENTS ============
+els.entitiesList.addEventListener('click', e => {
+  const entityEl = e.target.closest('.entity');
+  if (!entityEl) return;
+  const id = parseInt(entityEl.dataset.id, 10);
+  const action = e.target.closest('[data-action]')?.dataset.action;
+
+  if (action === 'color') {
+    const sw = e.target.closest('.swatch');
+    openColorPopup(sw, id);
+    e.stopPropagation();
+    return;
+  }
+  if (action === 'toggle') {
+    toggleVisibility(id);
+    e.stopPropagation();
+    return;
+  }
+  if (action === 'delete') {
+    if (state.pendingDelete === id) {
+      deleteEntity(id);
+    } else {
+      state.pendingDelete = id;
+      updateUI();
+      setTimeout(() => {
+        if (state.pendingDelete === id) {
+          state.pendingDelete = null;
+          updateUI();
+        }
+      }, 2500);
+    }
+    e.stopPropagation();
+    return;
+  }
+  if (action === 'rename') {
+    const nameEl = e.target.closest('.n');
+    if (!nameEl) return;
+    const ent = getEntity(id);
+    if (!ent) return;
+    nameEl.textContent = ent.name;
+    nameEl.setAttribute('contenteditable', 'true');
+    const range = document.createRange();
+    range.selectNodeContents(nameEl);
+    const sel = window.getSelection();
+    sel.removeAllRanges(); sel.addRange(range);
+    nameEl.focus();
+    const finish = () => {
+      nameEl.removeAttribute('contenteditable');
+      renameEntity(id, nameEl.textContent);
+      nameEl.removeEventListener('blur', finish);
+      nameEl.removeEventListener('keydown', keyHandler);
+    };
+    const keyHandler = (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); nameEl.blur(); }
+      if (ev.key === 'Escape') { nameEl.textContent = ent.name; nameEl.blur(); }
+    };
+    nameEl.addEventListener('blur', finish);
+    nameEl.addEventListener('keydown', keyHandler);
+    e.stopPropagation();
+    return;
+  }
+  // Default: activate
+  state.activeEntityId = id;
+  state.pendingDelete = null;
+  updateUI();
+});
+
+// ============ TOOLS ============
+document.querySelectorAll('.tool-btn[data-tool]').forEach(b => {
+  b.addEventListener('click', () => {
+    if (b.disabled) return;
+    state.tool = b.dataset.tool;
+    updateUI();
+  });
+});
+
+els.btnUndo.addEventListener('click', undo);
+els.btnRedo.addEventListener('click', redo);
+
+els.btnAddEntity.addEventListener('click', () => addEntity());
+els.btnReset.addEventListener('click', () => {
+  if (!confirm('Clear all painted regions?')) return;
+  clearMask();
+});
+els.btnExport.addEventListener('click', exportZip);
+
+// zoom controls
+els.zoomIn.addEventListener('click', () => setZoom(state.zoom * 1.2));
+els.zoomOut.addEventListener('click', () => setZoom(state.zoom / 1.2));
+els.zoomFit.addEventListener('click', fitZoom);
+
+// ============ IMPORT / DROP ============
+els.btnImport.addEventListener('click', () => els.fileInput.click());
+els.btnEmpty.addEventListener('click', () => els.fileInput.click());
+els.dropzone.addEventListener('click', () => els.fileInput.click());
+els.fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) loadImageFromFile(f);
+  e.target.value = '';
+});
+
+['dragenter', 'dragover'].forEach(evt => {
+  els.dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    els.dropzone.classList.add('dragover');
+  });
+});
+['dragleave', 'drop'].forEach(evt => {
+  els.dropzone.addEventListener(evt, e => {
+    e.preventDefault();
+    els.dropzone.classList.remove('dragover');
+  });
+});
+els.dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) loadImageFromFile(f);
+});
+
+// global drop (so dropping anywhere on the page works once an image is loaded — replace it)
+window.addEventListener('dragover', e => { e.preventDefault(); });
+window.addEventListener('drop', e => {
+  if (e.target.closest('.empty-card')) return; // handled above
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if (f) loadImageFromFile(f);
+});
+
+// ============ KEYBOARD ============
+window.addEventListener('keydown', e => {
+  // ignore when editing text
+  if (e.target.isContentEditable || /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'o') {
+    e.preventDefault(); els.fileInput.click(); return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+    return;
+  }
+  if (!state.image) return;
+  const k = e.key.toLowerCase();
+  if (k === 'b') { state.tool = 'brush'; updateUI(); }
+  else if (k === 'e') { state.tool = 'eraser'; updateUI(); }
+  else if (k === 'g') { state.tool = 'bucket'; updateUI(); }
+  else if (k === 'i') { state.tool = 'pipette'; updateUI(); }
+  else if (k === '[') { state.brushSize = clamp(state.brushSize - 2, 1, 200); updateUI(); }
+  else if (k === ']') { state.brushSize = clamp(state.brushSize + 2, 1, 200); updateUI(); }
+  // 1..9 → activate entity #n
+  else if (/^[1-9]$/.test(k)) {
+    const ent = state.entities[parseInt(k, 10) - 1];
+    if (ent) { state.activeEntityId = ent.id; updateUI(); }
+  }
+});
+
+// ============ RESIZE ============
+window.addEventListener('resize', () => {
+  // no-op for canvas (native res unchanged); just update brush cursor sizing
+  updateCursorCanvas();
+});
+
+// ============ INIT ============
+updateUI();
+</script>
+
+</body>
+</html>
