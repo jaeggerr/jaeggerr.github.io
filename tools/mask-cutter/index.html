@@ -359,6 +359,11 @@ a { color: inherit; text-decoration: none; }
 .canvas-stack.pipette { cursor: help; }
 .canvas-stack.smart-pick { cursor: crosshair; }
 
+/* Right-click pan: override every cursor inside the viewport while dragging. */
+.canvas-wrap.panning,
+.canvas-wrap.panning .canvas-stack,
+.canvas-wrap.panning .canvas-stack canvas { cursor: grabbing !important; }
+
 /* floating controls */
 .zoom-badge {
   position: fixed;
@@ -2289,6 +2294,49 @@ function updateCursorCanvas() {
   cursorCtx.lineWidth = Math.max(1, 1 / state.zoom);
   cursorCtx.stroke();
 }
+
+// ============ RIGHT-CLICK PAN ============
+const _pan = { active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 };
+
+// Suppress the native context menu over the viewport while an image is loaded
+// (right-click is reserved for panning).
+els.canvasWrap.addEventListener('contextmenu', e => {
+  if (state.image) e.preventDefault();
+});
+
+els.canvasWrap.addEventListener('mousedown', e => {
+  if (!state.image || e.button !== 2) return;
+  _pan.active = true;
+  _pan.startX = e.clientX;
+  _pan.startY = e.clientY;
+  _pan.scrollLeft = els.canvasWrap.scrollLeft;
+  _pan.scrollTop = els.canvasWrap.scrollTop;
+  els.canvasWrap.classList.add('panning');
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', e => {
+  if (!_pan.active) return;
+  const dx = e.clientX - _pan.startX;
+  const dy = e.clientY - _pan.startY;
+  els.canvasWrap.scrollLeft = _pan.scrollLeft - dx;
+  els.canvasWrap.scrollTop = _pan.scrollTop - dy;
+});
+
+window.addEventListener('mouseup', e => {
+  if (_pan.active && e.button === 2) {
+    _pan.active = false;
+    els.canvasWrap.classList.remove('panning');
+  }
+});
+
+// Stop panning if the user releases the button outside the window
+window.addEventListener('blur', () => {
+  if (_pan.active) {
+    _pan.active = false;
+    els.canvasWrap.classList.remove('panning');
+  }
+});
 
 // ============ WHEEL ZOOM ============
 els.canvasWrap.addEventListener('wheel', e => {
