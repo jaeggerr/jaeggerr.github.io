@@ -1009,6 +1009,10 @@ input[type="file"] { display: none; }
     </div>
 
     <div class="actions">
+      <button class="btn-ghost" id="btnNew" title="Start over with a new image" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="12" y1="12" x2="12" y2="18"/></svg>
+        new
+      </button>
       <button class="btn-ghost" id="btnImport" title="Import image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         import
@@ -1343,6 +1347,7 @@ const els = {
   overlay: $('overlayCanvas'),
   cursor: $('cursorCanvas'),
   fileInput: $('fileInput'),
+  btnNew: $('btnNew'),
   btnImport: $('btnImport'),
   btnReset: $('btnReset'),
   btnExport: $('btnExport'),
@@ -1431,6 +1436,74 @@ function getEntity(id) { return state.entities.find(e => e.id === id); }
 function activeEntity() { return getEntity(state.activeEntityId); }
 
 // ============ IMAGE LOAD ============
+function newImage() {
+  if (!state.image) return;
+  const anyPaint = state.entities.some(e => e.pixelCount > 0);
+  if (anyPaint && !confirm('Start over with a new image? Your current cut-outs will be lost.')) return;
+
+  // Wipe per-image state
+  state.image = null;
+  state.imgW = 0;
+  state.imgH = 0;
+  state.mask = null;
+  state.srcData = null;
+  state.entities = [];
+  state.activeEntityId = 0;
+  state.nextEntityId = 1;
+  state.history = [];
+  state.historyIdx = -1;
+  state.isPainting = false;
+  state.lastPaint = null;
+  state.cursor = null;
+  state.pendingDelete = null;
+  state.strokeDidPaint = false;
+  state.fileName = '';
+  state.fileSize = 0;
+  state.tool = 'brush';
+
+  // Per-image AI artefacts (the downloaded models themselves stay in memory)
+  for (const bundle of state.ai.sam.bundles.values()) {
+    bundle.embeddings = null;
+    bundle.inputs = null;
+    bundle.rawImage = null;
+    bundle.encodedFor = null;
+  }
+
+  // Clear visible canvases so nothing flashes if the viewport is briefly visible
+  if (srcCtx) srcCtx.clearRect(0, 0, els.src.width, els.src.height);
+  if (overlayCtx) overlayCtx.clearRect(0, 0, els.overlay.width, els.overlay.height);
+  if (cursorCtx) cursorCtx.clearRect(0, 0, els.cursor.width, els.cursor.height);
+
+  // Swap viewport → empty
+  els.viewport.classList.add('hidden');
+  els.zoomBadge.classList.add('hidden');
+  els.canvasControls.classList.add('hidden');
+  els.empty.classList.remove('hidden');
+
+  // Reset controls + chrome
+  els.btnNew.disabled = true;
+  els.btnReset.disabled = true;
+  els.btnAddEntity.disabled = true;
+  els.btnFillRemaining.disabled = true;
+  els.btnAiBackground.disabled = true;
+  document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.disabled = true);
+
+  els.filepill.classList.remove('live');
+  els.filename.textContent = 'no image';
+  els.filedims.textContent = '';
+  els.statusbar.classList.remove('live');
+  els.statusState.textContent = 'waiting for an image';
+  els.statusFile.hidden = true;
+  els.statusDims.hidden = true;
+  els.statusBrush.hidden = true;
+  els.statusSize.hidden = true;
+  els.statusCoords.hidden = true;
+  els.statusZoom.hidden = true;
+
+  updateUI();
+  toast('ready for a new image');
+}
+
 function loadImageFromFile(file) {
   if (!file || !file.type.startsWith('image/')) {
     toast('unsupported format', true);
@@ -1487,6 +1560,7 @@ function installImage(img, fileName, fileSize) {
   els.canvasControls.classList.remove('hidden');
 
   // enable controls
+  els.btnNew.disabled = false;
   els.btnReset.disabled = false;
   els.btnAddEntity.disabled = false;
   els.btnFillRemaining.disabled = false;
@@ -2845,6 +2919,7 @@ els.btnRedo.addEventListener('click', redo);
 
 els.btnAddEntity.addEventListener('click', () => addEntity());
 els.btnFillRemaining.addEventListener('click', fillRemaining);
+els.btnNew.addEventListener('click', newImage);
 els.btnReset.addEventListener('click', () => {
   if (!confirm('Clear all painted regions?')) return;
   clearMask();
