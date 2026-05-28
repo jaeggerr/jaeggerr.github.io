@@ -686,6 +686,42 @@ a { color: inherit; text-decoration: none; }
   border-radius: 2px;
 }
 
+/* Edges panel (smoothing + feather) */
+.edge-settings { display: flex; flex-direction: column; gap: 14px; }
+.edge-row {
+  display: grid;
+  grid-template-columns: 78px 1fr 52px;
+  align-items: center;
+  gap: 12px;
+}
+.edge-row label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.edge-row .slider { width: 100%; }
+.edge-row .val {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+  text-align: right;
+}
+.edge-note {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  background: var(--cream-2);
+  border-radius: 8px;
+  border: 1px dashed var(--line-strong);
+}
+.edge-note b { color: var(--ink-2); font-weight: 600; }
+
 .export-note {
   margin-top: 14px;
   padding: 12px 14px;
@@ -1123,6 +1159,33 @@ input[type="file"] { display: none; }
 
       <div class="panel-section">
         <div class="panel-h">
+          <h2>Edges</h2>
+          <span class="meta">post-process</span>
+        </div>
+        <div class="edge-settings">
+          <div class="edge-row">
+            <label>smoothing</label>
+            <div class="slider" id="sliderSmoothing" data-min="0" data-max="15">
+              <span class="fill"></span><span class="knob"></span>
+            </div>
+            <span class="val" id="smoothingVal">0 px</span>
+          </div>
+          <div class="edge-row">
+            <label>feather</label>
+            <div class="slider" id="sliderFeather" data-min="0" data-max="20">
+              <span class="fill"></span><span class="knob"></span>
+            </div>
+            <span class="val" id="featherVal">0 px</span>
+          </div>
+          <p class="edge-note">
+            <b>smoothing</b> rounds off jagged edges after each brush, bucket or smart-pick — visible in the editor.<br>
+            <b>feather</b> softens the alpha falloff on exported PNGs only; doesn't change the in-editor mask.
+          </p>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="panel-h">
           <h2>Coverage</h2>
           <span class="meta" id="coverageMeta">—</span>
         </div>
@@ -1241,6 +1304,10 @@ const state = {
   fileName: '',
   fileSize: 0,
   pendingDelete: null,   // entity id awaiting confirm
+  settings: {
+    smoothing: 0,        // 0..15 px — blur+threshold radius applied to the active entity after each op
+    feather: 0,          // 0..20 px — soft-alpha radius applied at export time only
+  },
   ai: {
     rmbgPipeline: null,
     busy: false,
@@ -1321,6 +1388,10 @@ const els = {
   aiInfer: $('aiInfer'),
   aiInferText: $('aiInferText'),
   qualityToggle: $('qualityToggle'),
+  sliderSmoothing: $('sliderSmoothing'),
+  sliderFeather: $('sliderFeather'),
+  smoothingVal: $('smoothingVal'),
+  featherVal: $('featherVal'),
 };
 const srcCtx = els.src.getContext('2d');
 const overlayCtx = els.overlay.getContext('2d');
@@ -1568,6 +1639,46 @@ function rerasterizeFull() {
   rerasterizeRegion(0, 0, state.imgW, state.imgH);
 }
 
+// Apply a blur+threshold pass to the active entity's region. Pixels owned by
+// other entities are never touched (exclusivity preserved); empty pixels can
+// be claimed by the smoothed boundary, and active-entity pixels can be released
+// back to empty if they fell outside the smoothed shape.
+function smoothMaskForEntity(entityId, radiusPx) {
+  if (!state.image || !entityId || radiusPx <= 0) return;
+  const w = state.imgW, h = state.imgH;
+  // 1. Render the entity's binary mask onto a canvas
+  const src = document.createElement('canvas');
+  src.width = w; src.height = h;
+  const sctx = src.getContext('2d');
+  const sdata = sctx.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) {
+    const v = state.mask[i] === entityId ? 255 : 0;
+    sdata.data[i*4+0] = v; sdata.data[i*4+1] = v; sdata.data[i*4+2] = v; sdata.data[i*4+3] = 255;
+  }
+  sctx.putImageData(sdata, 0, 0);
+  // 2. Blur into a second canvas (GPU-accelerated where supported)
+  const dst = document.createElement('canvas');
+  dst.width = w; dst.height = h;
+  const dctx = dst.getContext('2d');
+  dctx.filter = `blur(${radiusPx}px)`;
+  dctx.drawImage(src, 0, 0);
+  dctx.filter = 'none';
+  const blurred = dctx.getImageData(0, 0, w, h).data;
+  // 3. Threshold at 128; only modify empty cells or active-entity cells.
+  for (let i = 0; i < w * h; i++) {
+    const owner = state.mask[i];
+    if (owner !== 0 && owner !== entityId) continue;
+    state.mask[i] = blurred[i*4] >= 128 ? entityId : 0;
+  }
+}
+
+// Called BEFORE the final rerasterize of each op so the caller does a single repaint.
+function maybeSmoothActive() {
+  if (state.settings.smoothing > 0 && state.activeEntityId) {
+    smoothMaskForEntity(state.activeEntityId, state.settings.smoothing);
+  }
+}
+
 function clearMask() {
   if (!state.mask) return;
   state.mask.fill(0);
@@ -1606,6 +1717,7 @@ function bucketFill(x, y) {
     stack.push(cx, cy + 1);
     stack.push(cx, cy - 1);
   }
+  maybeSmoothActive();
   rerasterizeFull();
   recountAll();
   pushHistory();
@@ -1765,6 +1877,7 @@ async function autoBackground() {
     state.activeEntityId = bg.id;
 
     const painted = applyAIMaskAsBackground(mask, bg.id);
+    maybeSmoothActive();
     rerasterizeFull();
     recountAll();
     pushHistory();
@@ -2017,6 +2130,7 @@ function applySAMMaskToActiveEntity(maskTensor, maskIdx) {
     toast('no region found at that point', true);
     return;
   }
+  maybeSmoothActive();
   rerasterizeFull();
   recountAll();
   pushHistory();
@@ -2180,8 +2294,12 @@ function updateUI() {
   // sliders visual
   updateSliderVisual(els.sliderSize, state.brushSize, 1, 200);
   updateSliderVisual(els.sliderOpacity, Math.round(state.overlayOpacity * 100), 0, 100);
+  updateSliderVisual(els.sliderSmoothing, state.settings.smoothing, 0, 15);
+  updateSliderVisual(els.sliderFeather,   state.settings.feather,   0, 20);
   els.sizeVal.textContent = state.brushSize + ' px';
   els.opacityVal.textContent = Math.round(state.overlayOpacity * 100) + '%';
+  els.smoothingVal.textContent = state.settings.smoothing + ' px';
+  els.featherVal.textContent   = state.settings.feather   + ' px';
 
   // overlay css opacity
   els.overlay.style.opacity = state.overlayOpacity;
@@ -2254,7 +2372,7 @@ async function exportZip() {
 }
 
 async function renderEntityPNG(ent) {
-  // compute bbox
+  // compute binary bbox
   let minX = state.imgW, minY = state.imgH, maxX = -1, maxY = -1;
   const imgW = state.imgW;
   for (let y = 0; y < state.imgH; y++) {
@@ -2269,22 +2387,61 @@ async function renderEntityPNG(ent) {
     }
   }
   if (maxX < 0) return null;
+
+  // If feather > 0, pad the bbox so the soft alpha falloff isn't clipped
+  const feather = state.settings.feather;
+  const pad = feather > 0 ? Math.ceil(feather * 1.5) : 0;
+  minX = Math.max(0, minX - pad);
+  minY = Math.max(0, minY - pad);
+  maxX = Math.min(state.imgW - 1, maxX + pad);
+  maxY = Math.min(state.imgH - 1, maxY + pad);
   const w = maxX - minX + 1;
   const h = maxY - minY + 1;
+
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
   ctx.drawImage(els.src, -minX, -minY);
   const data = ctx.getImageData(0, 0, w, h);
   const px = data.data;
-  for (let j = 0; j < h; j++) {
-    for (let i = 0; i < w; i++) {
-      const fullIdx = (minY + j) * imgW + (minX + i);
-      if (state.mask[fullIdx] !== ent.id) {
-        px[(j * w + i) * 4 + 3] = 0;
+
+  if (feather <= 0) {
+    // Hard alpha: zero out every pixel not owned by this entity
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const fullIdx = (minY + j) * imgW + (minX + i);
+        if (state.mask[fullIdx] !== ent.id) {
+          px[(j * w + i) * 4 + 3] = 0;
+        }
       }
     }
+  } else {
+    // Soft alpha: blur a binary mask canvas and use the blurred R channel as alpha
+    const m = document.createElement('canvas');
+    m.width = w; m.height = h;
+    const mctx = m.getContext('2d');
+    const mdata = mctx.createImageData(w, h);
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const fullIdx = (minY + j) * imgW + (minX + i);
+        const v = state.mask[fullIdx] === ent.id ? 255 : 0;
+        const k = (j * w + i) * 4;
+        mdata.data[k] = v; mdata.data[k+1] = v; mdata.data[k+2] = v; mdata.data[k+3] = 255;
+      }
+    }
+    mctx.putImageData(mdata, 0, 0);
+    const b = document.createElement('canvas');
+    b.width = w; b.height = h;
+    const bctx = b.getContext('2d');
+    bctx.filter = `blur(${feather}px)`;
+    bctx.drawImage(m, 0, 0);
+    bctx.filter = 'none';
+    const blurAlpha = bctx.getImageData(0, 0, w, h).data;
+    for (let i = 0; i < w * h; i++) {
+      px[i * 4 + 3] = blurAlpha[i * 4];
+    }
   }
+
   ctx.putImageData(data, 0, 0);
   return new Promise(resolve => c.toBlob(b => resolve(b), 'image/png'));
 }
@@ -2387,6 +2544,10 @@ window.addEventListener('mouseup', () => {
   if (state.isPainting) {
     state.isPainting = false;
     state.lastPaint = null;
+    if (state.strokeDidPaint) {
+      maybeSmoothActive();
+      rerasterizeFull();
+    }
     recountAll();
     if (state.strokeDidPaint) pushHistory();
     state.strokeDidPaint = false;
@@ -2498,6 +2659,8 @@ function bindSlider(el, getValue, setValue, min, max) {
 }
 bindSlider(els.sliderSize, () => state.brushSize, v => state.brushSize = v, 1, 200);
 bindSlider(els.sliderOpacity, () => state.overlayOpacity * 100, v => state.overlayOpacity = v / 100, 0, 100);
+bindSlider(els.sliderSmoothing, () => state.settings.smoothing, v => state.settings.smoothing = v, 0, 15);
+bindSlider(els.sliderFeather,   () => state.settings.feather,   v => state.settings.feather   = v, 0, 20);
 
 // ============ COLOR POPUP ============
 let popupTargetId = null;
