@@ -2346,6 +2346,10 @@ async function exportZip() {
   await new Promise(r => setTimeout(r, 16)); // let UI update
   try {
     const zip = new JSZip();
+    const baseName = state.fileName.replace(/\.[^.]+$/, '') || 'image';
+    // Pack all PNGs inside a single folder so extraction lands in a clean directory
+    // instead of dumping the files into the user's current folder.
+    const folder = zip.folder(`${baseName}_masks`);
     let totalBytes = 0;
     const used = new Set();
     for (const ent of exportable) {
@@ -2356,11 +2360,10 @@ async function exportZip() {
       let i = 2;
       while (used.has(final + '.png')) final = `${name}_${i++}`;
       used.add(final + '.png');
-      zip.file(final + '.png', blob);
+      folder.file(final + '.png', blob);
       totalBytes += blob.size;
     }
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    const baseName = state.fileName.replace(/\.[^.]+$/, '') || 'image';
     triggerDownload(zipBlob, `${baseName}_masks.zip`);
     toast(`zip exported · ${exportable.length} PNG · ${formatBytes(zipBlob.size)}`);
   } catch (err) {
