@@ -413,6 +413,9 @@ a { color: inherit; text-decoration: none; }
 }
 .canvas-controls.hidden,
 .zoom-badge.hidden { display: none; }
+/* QUALITY toggle is only relevant when smart-pick is the active tool. */
+.canvas-controls .smart-pick-only { display: none; }
+.canvas-controls.tool-smart-pick .smart-pick-only { display: flex; }
 .ctrl { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
 .ctrl .label { letter-spacing: 0.04em; }
 .ctrl .v { color: var(--ink); font-weight: 600; min-width: 30px; }
@@ -444,6 +447,45 @@ a { color: inherit; text-decoration: none; }
   border: 2px solid var(--ink);
   border-radius: 50%;
   pointer-events: none;
+}
+
+/* SAM quality toggle (smart-pick mode) */
+.quality-toggle {
+  display: inline-flex;
+  background: var(--cream-2);
+  border-radius: 999px;
+  padding: 2px;
+  gap: 1px;
+}
+.quality-toggle button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 4px 9px 4px 9px;
+  border-radius: 999px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-3);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  position: relative;
+}
+.quality-toggle button:hover:not(.active) { color: var(--ink); }
+.quality-toggle button.active {
+  background: var(--ink);
+  color: var(--paper);
+}
+.quality-toggle button.loaded::before {
+  content: "";
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%;
+  background: var(--lime);
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+.quality-toggle button.active.loaded::before {
+  background: var(--lime);
+  box-shadow: 0 0 0 1px rgba(201,226,101,0.4);
 }
 
 /* ============ RIGHT PANEL ============ */
@@ -1023,6 +1065,15 @@ input[type="file"] { display: none; }
           </div>
           <span class="v" id="sizeVal">24 px</span>
         </div>
+        <div class="ctrl-sep smart-pick-only"></div>
+        <div class="ctrl smart-pick-only">
+          <span class="label">QUALITY</span>
+          <div class="quality-toggle" id="qualityToggle" role="tablist">
+            <button data-quality="fast" class="active" title="SlimSAM-77 · ~13 MB · fast">fast</button>
+            <button data-quality="balanced" title="SAM ViT-Base · ~100 MB · balanced">balanced</button>
+            <button data-quality="high" title="SAM ViT-Large · ~300 MB · highest quality">high</button>
+          </div>
+        </div>
         <div class="ctrl-sep"></div>
         <div class="ctrl">
           <span class="label">OVERLAY</span>
@@ -1191,11 +1242,10 @@ const state = {
     rmbgPipeline: null,
     busy: false,
     files: new Map(),         // file → { loaded, total }
-    samModel: null,
-    samProcessor: null,
-    samEmbeddings: null,      // tensors from the encoder pass
-    samEncodedFor: null,      // signature of the image we encoded for
-    samRawImage: null,        // RawImage object kept for processor calls
+    sam: {
+      quality: 'fast',        // 'fast' | 'balanced' | 'high'
+      bundles: new Map(),     // quality → { model, processor, embeddings, encodedFor, inputs, rawImage }
+    },
   },
 };
 
@@ -1267,6 +1317,7 @@ const els = {
   aiLoaderModel: $('aiLoaderModel'),
   aiInfer: $('aiInfer'),
   aiInferText: $('aiInferText'),
+  qualityToggle: $('qualityToggle'),
 };
 const srcCtx = els.src.getContext('2d');
 const overlayCtx = els.overlay.getContext('2d');
@@ -1316,11 +1367,14 @@ function installImage(img, fileName, fileSize) {
   state.fileName = fileName;
   state.fileSize = fileSize;
   state.mask = new Uint8Array(state.imgW * state.imgH);
-  // invalidate SAM embeddings — they belong to the previous image
-  state.ai.samEmbeddings = null;
-  state.ai.samInputs = null;
-  state.ai.samRawImage = null;
-  state.ai.samEncodedFor = null;
+  // invalidate every cached SAM bundle's embeddings — they belong to the previous image.
+  // The downloaded models stay in memory; only per-image artefacts are dropped.
+  for (const bundle of state.ai.sam.bundles.values()) {
+    bundle.embeddings = null;
+    bundle.inputs = null;
+    bundle.rawImage = null;
+    bundle.encodedFor = null;
+  }
   state.history = [];
   state.historyIdx = -1;
   state.entities = [];
@@ -1574,8 +1628,12 @@ function pipetteAt(x, y) {
 // ============ AI: shared (Transformers.js loader + progress modal) ============
 const TRANSFORMERS_CDN = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';
 const RMBG_MODEL = 'briaai/RMBG-1.4';
-const SAM_MODEL  = 'Xenova/slimsam-77-uniform';
-const SAM_MASK_INDEX = 1;  // 0=tight, 1=medium, 2=wide — default to medium
+const SAM_QUALITIES = {
+  fast:     { id: 'Xenova/slimsam-77-uniform', label: 'fast',     sizeNote: '~13 MB · SlimSAM-77, distilled' },
+  balanced: { id: 'Xenova/sam-vit-base',       label: 'balanced', sizeNote: '~100 MB · SAM ViT-Base' },
+  high:     { id: 'Xenova/sam-vit-large',      label: 'high',     sizeNote: '~300 MB · SAM ViT-Large' },
+};
+const SAM_MASK_INDEX = 1;  // 0=tight, 1=medium, 2=wide — fallback when iou_scores missing
 
 let _transformersModulePromise = null;
 function loadTransformers() {
@@ -1759,49 +1817,52 @@ function applyAIMaskAsBackground(rawMask, entityId) {
   return painted;
 }
 
-// ============ AI: SMART PICK (SlimSAM via Transformers.js) ============
-async function loadSAMModels() {
-  if (state.ai.samModel && state.ai.samProcessor) return;
-  showAILoader('Loading the smart-pick model', SAM_MODEL);
-  try {
-    const { SamModel, AutoProcessor } = await loadTransformers();
-    state.ai.samProcessor = await AutoProcessor.from_pretrained(SAM_MODEL, {
-      progress_callback: handleAIProgress,
-    });
-    state.ai.samModel = await SamModel.from_pretrained(SAM_MODEL, {
-      progress_callback: handleAIProgress,
-    });
-    hideAILoader();
-  } catch (err) {
-    hideAILoader();
-    console.error('[mask-cutter] failed to load SAM:', err);
-    toast('Smart-pick model failed to load — see console', true);
-    throw err;
-  }
-}
-
+// ============ AI: SMART PICK (SAM family via Transformers.js, quality-switchable) ============
 function imageSignature() {
   return `${state.fileName}:${state.imgW}x${state.imgH}`;
 }
 
-async function encodeCurrentImageForSAM() {
-  if (!state.image) return;
-  const sig = imageSignature();
-  if (state.ai.samEncodedFor === sig && state.ai.samEmbeddings) return;
+function getCurrentSAMBundle() {
+  return state.ai.sam.bundles.get(state.ai.sam.quality);
+}
 
-  showAIInfer('preparing image for smart pick…');
+async function loadSAMBundle(quality) {
+  const existing = state.ai.sam.bundles.get(quality);
+  if (existing && existing.model && existing.processor) return existing;
+  const spec = SAM_QUALITIES[quality];
+  if (!spec) throw new Error(`unknown SAM quality: ${quality}`);
+  showAILoader(`Loading smart-pick · ${spec.label} quality`, spec.id);
+  try {
+    const { SamModel, AutoProcessor } = await loadTransformers();
+    const bundle = existing || { quality, model: null, processor: null, embeddings: null, encodedFor: null, inputs: null, rawImage: null };
+    bundle.processor = await AutoProcessor.from_pretrained(spec.id, { progress_callback: handleAIProgress });
+    bundle.model = await SamModel.from_pretrained(spec.id, { progress_callback: handleAIProgress });
+    state.ai.sam.bundles.set(quality, bundle);
+    hideAILoader();
+    return bundle;
+  } catch (err) {
+    hideAILoader();
+    console.error(`[mask-cutter] failed to load SAM (${quality}):`, err);
+    toast(`Smart-pick (${quality}) failed to load — see console`, true);
+    throw err;
+  }
+}
+
+async function encodeImageForBundle(bundle) {
+  if (!state.image || !bundle) return;
+  const sig = imageSignature();
+  if (bundle.encodedFor === sig && bundle.embeddings) return;
+  showAIInfer(`preparing image · ${bundle.quality}…`);
   await new Promise(r => requestAnimationFrame(() => r()));
   try {
     const { RawImage } = await loadTransformers();
     const dataUrl = els.src.toDataURL('image/png');
     const rawImage = await RawImage.fromURL(dataUrl);
-    state.ai.samRawImage = rawImage;
-
-    // Encoder pass: heavy once per image, then cached.
-    const inputs = await state.ai.samProcessor(rawImage);
-    state.ai.samInputs = inputs;
-    state.ai.samEmbeddings = await state.ai.samModel.get_image_embeddings(inputs);
-    state.ai.samEncodedFor = sig;
+    bundle.rawImage = rawImage;
+    const inputs = await bundle.processor(rawImage);
+    bundle.inputs = inputs;
+    bundle.embeddings = await bundle.model.get_image_embeddings(inputs);
+    bundle.encodedFor = sig;
   } finally {
     hideAIInfer();
   }
@@ -1812,14 +1873,13 @@ async function activateSmartPick() {
   if (state.ai.busy) return;
   state.ai.busy = true;
   try {
-    await loadSAMModels();
-    await encodeCurrentImageForSAM();
+    const bundle = await loadSAMBundle(state.ai.sam.quality);
+    await encodeImageForBundle(bundle);
     state.tool = 'smart-pick';
     toast('smart pick ready — click an object');
     updateUI();
   } catch (err) {
     console.error(err);
-    // Fall back to brush if anything failed
     state.tool = 'brush';
     updateUI();
   } finally {
@@ -1827,11 +1887,36 @@ async function activateSmartPick() {
   }
 }
 
+async function setSAMQuality(quality) {
+  if (!SAM_QUALITIES[quality]) return;
+  if (state.ai.sam.quality === quality) return;
+  state.ai.sam.quality = quality;
+  updateUI();
+  // Eagerly load the new bundle + re-encode the current image if we're already
+  // in smart-pick mode so the next click is instant.
+  if (state.image && state.tool === 'smart-pick' && !state.ai.busy) {
+    state.ai.busy = true;
+    try {
+      const bundle = await loadSAMBundle(quality);
+      await encodeImageForBundle(bundle);
+      toast(`switched to ${quality}`);
+      updateUI();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      state.ai.busy = false;
+    }
+  } else {
+    toast(`smart-pick quality: ${quality}`);
+  }
+}
+
 async function smartPickAt(x, y) {
-  if (!state.image || !state.ai.samModel || !state.ai.samProcessor) return;
-  if (!state.ai.samEmbeddings || state.ai.samEncodedFor !== imageSignature()) {
-    // image changed under us — re-encode
-    await encodeCurrentImageForSAM();
+  if (!state.image) return;
+  const bundle = getCurrentSAMBundle();
+  if (!bundle || !bundle.model || !bundle.processor) return;
+  if (!bundle.embeddings || bundle.encodedFor !== imageSignature()) {
+    await encodeImageForBundle(bundle);
   }
   if (!state.activeEntityId) {
     toast('create an entity first', true);
@@ -1841,27 +1926,20 @@ async function smartPickAt(x, y) {
   state.ai.busy = true;
   showAIInfer('segmenting…');
   try {
-    // Decoder pass: pass the click point as an input prompt and reuse the cached
-    // image embeddings. Coordinates are in source-image pixel space.
-    const promptInputs = await state.ai.samProcessor(
-      state.ai.samRawImage,
+    const promptInputs = await bundle.processor(
+      bundle.rawImage,
       { input_points: [[[Math.floor(x), Math.floor(y)]]] }
     );
-    const outputs = await state.ai.samModel({
-      ...promptInputs,
-      ...state.ai.samEmbeddings,
-    });
-    const masks = await state.ai.samProcessor.post_process_masks(
+    const outputs = await bundle.model({ ...promptInputs, ...bundle.embeddings });
+    const masks = await bundle.processor.post_process_masks(
       outputs.pred_masks,
       promptInputs.original_sizes,
       promptInputs.reshaped_input_sizes,
     );
     hideAIInfer();
-    // Pick the candidate mask with the highest predicted IoU score —
-    // mask 0 is usually the "widest" interpretation (often the whole image),
-    // masks 1/2 are the focused ones. Best-IoU is the standard SAM heuristic.
+    // Pick the mask with the highest predicted IoU.
     const ious = outputs.iou_scores?.data;
-    let bestIdx = 1;
+    let bestIdx = SAM_MASK_INDEX;
     if (ious && ious.length) {
       let best = -Infinity;
       for (let i = 0; i < ious.length; i++) {
@@ -2104,6 +2182,16 @@ function updateUI() {
 
   // overlay css opacity
   els.overlay.style.opacity = state.overlayOpacity;
+
+  // smart-pick quality toggle: active state + 'loaded' dot for every cached bundle
+  els.canvasControls.classList.toggle('tool-smart-pick', state.tool === 'smart-pick');
+  if (els.qualityToggle) {
+    els.qualityToggle.querySelectorAll('button').forEach(b => {
+      const q = b.dataset.quality;
+      b.classList.toggle('active', q === state.ai.sam.quality);
+      b.classList.toggle('loaded', state.ai.sam.bundles.has(q));
+    });
+  }
 }
 
 function updateSliderVisual(el, val, min, max) {
@@ -2535,6 +2623,12 @@ els.btnReset.addEventListener('click', () => {
 });
 els.btnExport.addEventListener('click', exportZip);
 els.btnAiBackground.addEventListener('click', autoBackground);
+
+els.qualityToggle.addEventListener('click', e => {
+  const b = e.target.closest('button[data-quality]');
+  if (!b) return;
+  setSAMQuality(b.dataset.quality);
+});
 
 // zoom controls
 els.zoomIn.addEventListener('click', () => setZoom(state.zoom * 1.2));
