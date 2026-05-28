@@ -619,6 +619,13 @@ a { color: inherit; text-decoration: none; }
 .add-entity:disabled { opacity: 0.45; cursor: not-allowed; }
 .add-entity svg { width: 14px; height: 14px; }
 
+.entity-add-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+.entity-add-row .add-entity { margin-top: 0; padding: 9px 10px; font-size: 12.5px; }
+.entity-add-row .add-entity.secondary { color: var(--ink-3); }
+.entity-add-row .add-entity.secondary:hover:not(:disabled) { color: var(--ink); border-color: var(--ink); }
+.entity-add-row .add-entity.secondary svg { color: var(--ink-3); }
+.entity-add-row .add-entity.secondary:hover:not(:disabled) svg { color: var(--ink); }
+
 /* color picker popup */
 .color-popup {
   position: absolute;
@@ -1151,10 +1158,16 @@ input[type="file"] { display: none; }
           </div>
         </div>
 
-        <button class="add-entity" id="btnAddEntity" disabled>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          add entity
-        </button>
+        <div class="entity-add-row">
+          <button class="add-entity" id="btnAddEntity" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            add entity
+          </button>
+          <button class="add-entity secondary" id="btnFillRemaining" disabled title="Create a new entity from every currently-unpainted pixel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l8-8 9 9-8 8a2 2 0 0 1-3 0L5 14a2 2 0 0 1 0-3z"/><path d="M5 11l9 9"/></svg>
+            fill remaining
+          </button>
+        </div>
       </div>
 
       <div class="panel-section">
@@ -1335,6 +1348,7 @@ const els = {
   btnExport: $('btnExport'),
   btnEmpty: $('btnEmpty'),
   btnAddEntity: $('btnAddEntity'),
+  btnFillRemaining: $('btnFillRemaining'),
   btnUndo: $('btnUndo'),
   btnRedo: $('btnRedo'),
   entitiesList: $('entitiesList'),
@@ -1475,6 +1489,7 @@ function installImage(img, fileName, fileSize) {
   // enable controls
   els.btnReset.disabled = false;
   els.btnAddEntity.disabled = false;
+  els.btnFillRemaining.disabled = false;
   els.btnAiBackground.disabled = false;
   document.querySelectorAll('.tool-btn[data-tool]').forEach(b => b.disabled = false);
 
@@ -1522,6 +1537,40 @@ function addEntity(name) {
   state.activeEntityId = id;
   state.pendingDelete = null;
   updateUI();
+}
+
+function unpaintedPixelCount() {
+  if (!state.mask) return 0;
+  let n = 0;
+  for (let i = 0; i < state.mask.length; i++) if (state.mask[i] === 0) n++;
+  return n;
+}
+
+function fillRemaining() {
+  if (!state.image) return;
+  const remaining = unpaintedPixelCount();
+  if (remaining === 0) {
+    toast('nothing left to fill', true);
+    return;
+  }
+  // Default name: "subject" if a background entity already exists, else "remaining"
+  const hasBg = state.entities.some(e => e.name.toLowerCase() === 'background');
+  const defaultName = hasBg ? 'subject' : 'remaining';
+  // Avoid name collision
+  let name = defaultName;
+  let n = 2;
+  while (state.entities.some(e => e.name === name)) name = `${defaultName}_${n++}`;
+  addEntity(name);
+  const ent = state.entities[state.entities.length - 1];
+  for (let i = 0; i < state.mask.length; i++) {
+    if (state.mask[i] === 0) state.mask[i] = ent.id;
+  }
+  maybeSmoothActive();
+  rerasterizeFull();
+  recountAll();
+  pushHistory();
+  updateUI();
+  toast(`filled remaining · ${fmtNum(remaining)} px → "${ent.name}"`);
 }
 
 function deleteEntity(id) {
@@ -2264,6 +2313,15 @@ function updateUI() {
     ? '— paint at least one entity to enable export'
     : `${state.fileName.replace(/\.[^.]+$/, '')}_masks.zip  ·  ${exportable.length} PNG`;
 
+  // "+ fill remaining" only useful when an image is loaded and some pixels are still empty
+  if (state.image) {
+    const remaining = unpaintedPixelCount();
+    els.btnFillRemaining.disabled = remaining === 0;
+    els.btnFillRemaining.title = remaining === 0
+      ? 'no unpainted pixels left'
+      : `Create a new entity from the ${fmtNum(remaining)} unpainted pixel${remaining === 1 ? '' : 's'}`;
+  }
+
   // history buttons
   els.btnUndo.disabled = state.historyIdx <= 0;
   els.btnRedo.disabled = state.historyIdx >= state.history.length - 1;
@@ -2786,6 +2844,7 @@ els.btnUndo.addEventListener('click', undo);
 els.btnRedo.addEventListener('click', redo);
 
 els.btnAddEntity.addEventListener('click', () => addEntity());
+els.btnFillRemaining.addEventListener('click', fillRemaining);
 els.btnReset.addEventListener('click', () => {
   if (!confirm('Clear all painted regions?')) return;
   clearMask();
