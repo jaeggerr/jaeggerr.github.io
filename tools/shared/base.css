@@ -1,0 +1,28 @@
+/* Shared design tokens for the jaeggerr tools family (mask-cutter, bezier-cutter,
+   texture-unpacker). One canonical palette + typography so the tools can't drift.
+   Tool-specific tokens (e.g. checkerboard colours) stay local in each page. */
+:root {
+  --bg: #FAF6F0;
+  --paper: #FFFCF6;
+  --cream-2: #F4EFE6;
+  --ink: #1A1714;
+  --ink-2: #5C5651;
+  --ink-3: #8A8276;
+  --ink-4: #B8B0A2;
+  --line: #E6DFD3;
+  --line-strong: #D6CFBF;
+
+  --peach:  #FF8A5B;
+  --lime:   #C9E265;
+  --violet: #B14CFF;
+  --cyan:   #20C7E5;
+  --rose:   #FF4F8B;
+  --warn:   #E04A2E;
+
+  --display: 'Space Grotesk', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+
+  /* aliases — tools that named these tokens differently */
+  --cream: var(--bg);
+  --sans: var(--display);
+}
