@@ -208,6 +208,17 @@ a { color: inherit; text-decoration: none; }
   background: var(--peach); border-radius: 2px;
 }
 .tool-btn svg { width: 18px; height: 18px; }
+/* "armed" = the active path has enough points to close; pulse to invite the click */
+.tool-btn.armed:not(:disabled) {
+  color: var(--ink);
+  background: var(--peach);
+  border-color: var(--peach);
+  animation: closePulse 1.6s ease-in-out infinite;
+}
+@keyframes closePulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--peach); }
+  50% { box-shadow: 0 0 0 4px transparent; }
+}
 .tool-sep { width: 24px; height: 1px; background: var(--line); margin: 6px 0; }
 .kbd {
   position: absolute;
@@ -364,6 +375,7 @@ a { color: inherit; text-decoration: none; }
 .canvas-stack.crosshair { cursor: crosshair; }
 .canvas-stack.pen { cursor: crosshair; }
 .canvas-stack.edit { cursor: default; }
+.canvas-stack.close-ready { cursor: pointer; }
 
 /* Right-click pan: override every cursor inside the viewport while dragging. */
 .canvas-wrap.panning,
@@ -1287,6 +1299,12 @@ const srcCtx = els.src.getContext('2d');
 const overlayCtx = els.overlay.getContext('2d');
 const cursorCtx = els.cursor.getContext('2d');
 
+// Pristine, never-modified copy of the source image. The visible srcCanvas gets
+// holes punched into it for hidden layers (so hiding a layer also hides the slice
+// of photo it covers), so exports must sample pixels from here instead.
+const pristineCanvas = document.createElement('canvas');
+const pristineCtx = pristineCanvas.getContext('2d');
+
 // ============ UTILS ============
 function hexToRgb(hex) {
   const h = hex.replace('#', '');
@@ -1296,6 +1314,17 @@ function hexA(hex, a) { const [r,g,b] = hexToRgb(hex); return `rgba(${r},${g},${
 function fmtNum(n) { return Math.round(n).toLocaleString('en-US'); }
 function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 function dist2(ax, ay, bx, by) { const dx = ax - bx, dy = ay - by; return dx*dx + dy*dy; }
+
+// True when the pen cursor is hovering the first anchor of a closeable open path
+// (>=3 points) — i.e. clicking now would close the loop. Drives the snap preview
+// and the highlighted "close here" anchor.
+function overCloseTarget() {
+  const l = activeLayer();
+  if (!l || l.closed || l.kind === 'remaining' || state.tool !== 'pen') return false;
+  if (l.anchors.length < 3 || !state.cursor || state.drag) return false;
+  const thr = HIT_PX / state.zoom;
+  return dist2(state.cursor.x, state.cursor.y, l.anchors[0].x, l.anchors[0].y) <= thr * thr;
+}
 
 function toast(msg, warn = false) {
   els.toast.textContent = msg;
@@ -1460,6 +1489,8 @@ function installImage(img, fileName, fileSize) {
   state.drag = null; state.sel = null; state.hover = null; state.pendingDelete = null;
 
   for (const c of [els.src, els.overlay, els.cursor]) { c.width = state.imgW; c.height = state.imgH; }
+  pristineCanvas.width = state.imgW; pristineCanvas.height = state.imgH;
+  pristineCtx.drawImage(img, 0, 0);
   srcCtx.drawImage(img, 0, 0);
   overlayCtx.clearRect(0, 0, state.imgW, state.imgH);
   cursorCtx.clearRect(0, 0, state.imgW, state.imgH);
@@ -1732,24 +1763,28 @@ function renderScaffold() {
   }
 
   // Rubber-band preview from the last anchor to the cursor (pen, open active path).
+  // When the cursor is over the first anchor, snap the preview onto it and draw a
+  // solid closing loop so it's obvious that clicking will close the shape.
+  const closeHover = overCloseTarget();
   if (active && !active.closed && state.tool === 'pen' && state.cursor && active.anchors.length > 0 && !state.drag) {
     const last = active.anchors[active.anchors.length - 1];
+    const tip = closeHover ? active.anchors[0] : state.cursor;
     cursorCtx.beginPath();
     cursorCtx.moveTo(last.x, last.y);
     if (!active.smooth && last.hOut) {
-      cursorCtx.bezierCurveTo(last.hOut.x, last.hOut.y, state.cursor.x, state.cursor.y, state.cursor.x, state.cursor.y);
+      cursorCtx.bezierCurveTo(last.hOut.x, last.hOut.y, tip.x, tip.y, tip.x, tip.y);
     } else {
-      cursorCtx.lineTo(state.cursor.x, state.cursor.y);
+      cursorCtx.lineTo(tip.x, tip.y);
     }
-    cursorCtx.strokeStyle = hexA(active.color, 0.5);
-    cursorCtx.lineWidth = Math.max(1, 1.4 / z);
-    cursorCtx.setLineDash([5 / z, 4 / z]);
+    cursorCtx.strokeStyle = hexA(active.color, closeHover ? 0.9 : 0.5);
+    cursorCtx.lineWidth = Math.max(1, (closeHover ? 2 : 1.4) / z);
+    if (!closeHover) cursorCtx.setLineDash([5 / z, 4 / z]);
     cursorCtx.stroke();
     cursorCtx.setLineDash([]);
   }
 
   // Handles + anchors for the active layer, drawn on top.
-  if (active && active.visible && active.kind !== 'remaining') drawAnchors(active);
+  if (active && active.visible && active.kind !== 'remaining') drawAnchors(active, closeHover);
 }
 
 function dot(x, y, r, fill, stroke, lw) {
@@ -1759,7 +1794,7 @@ function dot(x, y, r, fill, stroke, lw) {
   if (stroke) { cursorCtx.strokeStyle = stroke; cursorCtx.lineWidth = lw; cursorCtx.stroke(); }
 }
 
-function drawAnchors(layer) {
+function drawAnchors(layer, closeHover) {
   const z = state.zoom;
   const lw = Math.max(1, 1.5 / z);
 
@@ -1783,25 +1818,44 @@ function drawAnchors(layer) {
     const a = layer.anchors[i];
     const s = 7 / z;
     const isSel = state.sel && state.sel.layerId === layer.id && state.sel.idx === i;
-    const isFirst = i === 0 && !layer.closed && layer.anchors.length >= 2;
+    const isFirst = i === 0 && !layer.closed && layer.anchors.length >= 3;
+    const armed = isFirst && closeHover;   // cursor parked on the close target
     cursorCtx.beginPath();
     cursorCtx.rect(a.x - s / 2, a.y - s / 2, s, s);
-    cursorCtx.fillStyle = isSel ? layer.color : '#FFFCF6';
+    cursorCtx.fillStyle = (isSel || armed) ? layer.color : '#FFFCF6';
     cursorCtx.fill();
     cursorCtx.strokeStyle = layer.color;
     cursorCtx.lineWidth = lw;
     cursorCtx.stroke();
     if (isFirst) {
+      // ring around the first point marks it as the "close here" target; it grows
+      // and goes solid once the cursor is hovering it.
       cursorCtx.beginPath();
-      cursorCtx.arc(a.x, a.y, s, 0, Math.PI * 2);
-      cursorCtx.strokeStyle = hexA(layer.color, 0.7);
-      cursorCtx.lineWidth = lw;
+      cursorCtx.arc(a.x, a.y, armed ? s * 1.6 : s, 0, Math.PI * 2);
+      cursorCtx.strokeStyle = hexA(layer.color, armed ? 1 : 0.7);
+      cursorCtx.lineWidth = armed ? Math.max(1, 2 / z) : lw;
       cursorCtx.stroke();
     }
   }
 }
 
+// Redraw the photo, punching a hole wherever a hidden closed layer sits so the
+// covered slice of image disappears along with its overlay fill.
+function renderSource() {
+  if (!state.image) return;
+  srcCtx.setTransform(1, 0, 0, 1, 0, 0);
+  srcCtx.clearRect(0, 0, state.imgW, state.imgH);
+  srcCtx.drawImage(pristineCanvas, 0, 0);
+  srcCtx.globalCompositeOperation = 'destination-out';
+  for (const layer of state.layers) {
+    if (layer.visible || !layer.closed) continue;
+    srcCtx.fill(buildPath(layer), fillRule(layer));
+  }
+  srcCtx.globalCompositeOperation = 'source-over';
+}
+
 function renderAll() {
+  renderSource();
   renderOverlay();
   renderScaffold();
   updateUI();
@@ -1824,8 +1878,8 @@ function hitTest(layer, x, y) {
   for (let i = 0; i < layer.anchors.length; i++) {
     const a = layer.anchors[i];
     if (dist2(x, y, a.x, a.y) <= thr2) {
-      // anchor 0 of an open path with >=2 pts acts as the "close" target under the pen tool
-      if (i === 0 && !layer.closed && layer.anchors.length >= 2 && state.tool === 'pen') return { type: 'first', idx: 0 };
+      // anchor 0 of an open path with >=3 pts acts as the "close" target under the pen tool
+      if (i === 0 && !layer.closed && layer.anchors.length >= 3 && state.tool === 'pen') return { type: 'first', idx: 0 };
       return { type: 'anchor', idx: i };
     }
   }
@@ -1929,6 +1983,7 @@ window.addEventListener('mousemove', e => {
   const layer = activeLayer();
   const hit = layer ? hitTest(layer, x, y) : null;
   const key = hit ? hit.type + hit.idx : null;
+  els.stack.classList.toggle('close-ready', hit && hit.type === 'first');
   if (key !== state._hoverKey) { state._hoverKey = key; renderScaffold(); }
   else if (state.tool === 'pen' && layer && !layer.closed && layer.anchors.length > 0) {
     renderScaffold();   // keep the rubber-band following the cursor
@@ -2129,6 +2184,12 @@ function updateUI() {
   const curveVal = al ? (al.smooth ? 'smooth' : 'corners') : state.curveMode;
   els.curveToggle.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.curve === curveVal));
 
+  // close-path button: only enabled (and pulsing) once the active path is a
+  // closeable open shape with at least 3 points.
+  const closeable = !!(al && !al.closed && al.kind !== 'remaining' && al.anchors.length >= 3);
+  els.btnClosePath.disabled = !closeable;
+  els.btnClosePath.classList.toggle('armed', closeable);
+
   // status bar
   els.statusToolName.textContent = state.tool;
   if (al && !al.closed && state.tool === 'edit' && al.anchors.length > 0) {
@@ -2182,7 +2243,7 @@ async function renderLayerPNG(layer) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  ctx.drawImage(els.src, -minX, -minY);
+  ctx.drawImage(pristineCanvas, -minX, -minY);
 
   // mask (path filled white, then optionally blurred for a soft alpha edge)
   const m = document.createElement('canvas');

@@ -1416,6 +1416,12 @@ const srcCtx = els.src.getContext('2d');
 const overlayCtx = els.overlay.getContext('2d');
 const cursorCtx = els.cursor.getContext('2d');
 
+// Pristine, never-modified copy of the source image. The visible srcCanvas gets
+// holes punched into it for hidden entities (so hiding a layer also hides the
+// slice of photo it covers), so exports/AI must sample pixels from here instead.
+const pristineCanvas = document.createElement('canvas');
+const pristineCtx = pristineCanvas.getContext('2d');
+
 // ============ UTILS ============
 function hexToRgb(hex) {
   const h = hex.replace('#', '');
@@ -1548,6 +1554,8 @@ function installImage(img, fileName, fileSize) {
     c.width = state.imgW;
     c.height = state.imgH;
   }
+  pristineCanvas.width = state.imgW; pristineCanvas.height = state.imgH;
+  pristineCtx.drawImage(img, 0, 0);
   srcCtx.drawImage(img, 0, 0);
   state.srcData = srcCtx.getImageData(0, 0, state.imgW, state.imgH);
   overlayCtx.clearRect(0, 0, state.imgW, state.imgH);
@@ -1737,6 +1745,11 @@ function rerasterizeRegion(x, y, w, h) {
   if (w <= 0 || h <= 0) return;
   const imgData = overlayCtx.createImageData(w, h);
   const data = imgData.data;
+  // Rebuild the visible photo for this region from the pristine copy; pixels
+  // owned by a hidden entity get their alpha zeroed so the slice disappears.
+  const dispData = overlayCtx.createImageData(w, h);
+  const disp = dispData.data;
+  const pris = state.srcData ? state.srcData.data : null;
   const colorCache = new Map();
   for (const ent of state.entities) {
     colorCache.set(ent.id, ent.visible ? hexToRgb(ent.color) : null);
@@ -1745,16 +1758,25 @@ function rerasterizeRegion(x, y, w, h) {
   for (let j = 0; j < h; j++) {
     const rowStart = (y + j) * imgW;
     for (let i = 0; i < w; i++) {
-      const entId = state.mask[rowStart + (x + i)];
+      const srcIdx = rowStart + (x + i);
+      const entId = state.mask[srcIdx];
       const di = (j * w + i) * 4;
+      if (pris) {
+        const si = srcIdx * 4;
+        disp[di] = pris[si]; disp[di+1] = pris[si+1]; disp[di+2] = pris[si+2]; disp[di+3] = pris[si+3];
+      }
       if (entId === 0) { data[di + 3] = 0; continue; }
       const rgb = colorCache.get(entId);
-      if (!rgb) { data[di + 3] = 0; continue; }
+      if (!rgb) { data[di + 3] = 0; disp[di + 3] = 0; continue; }   // hidden → punch hole in photo too
       data[di] = rgb[0]; data[di+1] = rgb[1]; data[di+2] = rgb[2]; data[di+3] = 255;
     }
   }
   overlayCtx.clearRect(x, y, w, h);
   overlayCtx.putImageData(imgData, x, y);
+  if (pris) {
+    srcCtx.clearRect(x, y, w, h);
+    srcCtx.putImageData(dispData, x, y);
+  }
 }
 
 function rerasterizeFull() {
@@ -1979,7 +2001,7 @@ async function autoBackground() {
     showAIInfer('detecting background…');
     // Give the spinner a frame to render before the heavy CPU work
     await new Promise(r => requestAnimationFrame(() => r()));
-    const dataUrl = els.src.toDataURL('image/png');
+    const dataUrl = pristineCanvas.toDataURL('image/png');
     const output = await segmenter(dataUrl);
     hideAIInfer();
 
@@ -2095,7 +2117,7 @@ async function encodeImageForBundle(bundle) {
   await new Promise(r => requestAnimationFrame(() => r()));
   try {
     const { RawImage } = await loadTransformers();
-    const dataUrl = els.src.toDataURL('image/png');
+    const dataUrl = pristineCanvas.toDataURL('image/png');
     const rawImage = await RawImage.fromURL(dataUrl);
     bundle.rawImage = rawImage;
     const inputs = await bundle.processor(rawImage);
@@ -2536,7 +2558,7 @@ async function renderEntityPNG(ent) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
-  ctx.drawImage(els.src, -minX, -minY);
+  ctx.drawImage(pristineCanvas, -minX, -minY);
   const data = ctx.getImageData(0, 0, w, h);
   const px = data.data;
 
