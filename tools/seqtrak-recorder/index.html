@@ -1,0 +1,1421 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SEQTRAK Recorder · jaeggerr</title>
+<meta name="description" content="Record your Yamaha SEQTRAK over USB and export a WAV — in your browser. MIDI-driven start/stop, bar-accurate trimming, no upload.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='2' y='9' width='3' height='6' rx='1.5' fill='%23FF8A5B'/%3E%3Crect x='7' y='5' width='3' height='14' rx='1.5' fill='%23C9E265'/%3E%3Crect x='12' y='2' width='3' height='20' rx='1.5' fill='%23FF4F8B'/%3E%3Crect x='17' y='7' width='3' height='10' rx='1.5' fill='%2320C7E5'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../shared/base.css">
+<style>
+:root {
+  /* tool-specific — palette comes from base.css */
+  --rec: #E8443A;
+  --rec-soft: rgba(232,68,58,0.12);
+  --meter-lo: #C9E265;
+  --meter-mid: #FF8A5B;
+  --meter-hi: #E8443A;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+input, select { font: inherit; color: inherit; }
+a { color: inherit; text-decoration: none; }
+
+.app { display: grid; grid-template-rows: 60px 1fr 32px; height: 100vh; }
+
+/* ============ TOP BAR ============ */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 0 24px;
+  gap: 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--cream);
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand-mark { width: 32px; height: 32px; display: block; flex-shrink: 0; }
+.brand-text { display: flex; flex-direction: column; }
+.brand-text .a {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-3);
+  letter-spacing: 0.04em; line-height: 1.2;
+}
+.brand-text .b {
+  font-family: var(--sans); font-weight: 700; font-size: 18px;
+  letter-spacing: -0.02em; line-height: 1.1;
+}
+
+.file-info {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--paper); border: 1px solid var(--line);
+  padding: 7px 14px; border-radius: 999px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-2);
+  max-width: 560px;
+}
+.file-info b { color: var(--ink); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.file-info .sep { color: var(--ink-4); }
+.file-info .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 0 2px rgba(190,255,108,0.3); flex-shrink: 0; }
+.file-info .dot.idle { background: var(--ink-4); box-shadow: none; }
+.file-info .dot.err  { background: var(--rec); box-shadow: 0 0 0 2px var(--rec-soft); }
+
+.top-actions { justify-self: end; display: flex; align-items: center; gap: 8px; }
+
+.btn {
+  height: 36px; padding: 0 16px; border-radius: 10px;
+  font-family: var(--sans); font-size: 13px; font-weight: 500;
+  letter-spacing: -0.005em;
+  display: inline-flex; align-items: center; gap: 8px;
+  cursor: pointer; border: 1px solid var(--line-strong);
+  background: var(--paper); color: var(--ink);
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s;
+}
+.btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 0 -2px rgba(0,0,0,0.08); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn svg { width: 14px; height: 14px; stroke-width: 1.8; }
+.btn .kbd {
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-3);
+  background: var(--cream-2); padding: 1px 5px; border-radius: 4px;
+}
+.btn.primary {
+  background: var(--ink); color: var(--cream); border-color: var(--ink);
+  box-shadow: 0 2px 0 var(--peach);
+}
+.btn.primary:hover:not(:disabled) { box-shadow: 0 4px 0 var(--peach); transform: translateY(-2px); }
+.btn.primary:disabled { box-shadow: none; }
+.btn.primary .kbd { background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.7); }
+.btn.icon-only { padding: 0; width: 36px; justify-content: center; }
+
+/* ============ MAIN ============ */
+.main { display: grid; grid-template-columns: 1fr 380px; overflow: hidden; min-height: 0; }
+
+.stage {
+  position: relative; background: var(--cream); overflow: auto;
+  display: flex; flex-direction: column; padding: 18px 20px 20px 24px; gap: 14px; min-width: 0;
+}
+.stage-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.stage-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.stage-title h2 { margin: 0; font-family: var(--sans); font-weight: 600; font-size: 22px; letter-spacing: -0.02em; }
+.stage-title .sub { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+.stage-title .num {
+  font-family: var(--mono); font-size: 12px; font-weight: 600;
+  background: var(--cream-2); color: var(--ink-3);
+  padding: 3px 10px; border-radius: 6px;
+}
+.stage-title .num.live { background: var(--rec); color: #fff; }
+.stage-title .num.armed { background: var(--peach); color: var(--ink); }
+.stage-title .num.done { background: var(--lime); color: var(--ink); }
+
+.stage-toolbar { display: flex; align-items: center; gap: 6px; }
+.toolchip {
+  height: 30px; padding: 0 10px; border-radius: 8px;
+  font-family: var(--mono); font-size: 11.5px;
+  background: var(--paper); border: 1px solid var(--line);
+  display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); cursor: pointer;
+}
+.toolchip:hover:not(:disabled) { border-color: var(--line-strong); color: var(--ink); }
+.toolchip:disabled { opacity: .45; cursor: not-allowed; }
+.toolchip svg { width: 13px; height: 13px; stroke-width: 1.8; }
+.toolchip.active { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+
+/* ----- transport ----- */
+.deck {
+  background: var(--paper); border: 1px solid var(--line); border-radius: 16px;
+  padding: 26px 28px; display: flex; align-items: center; gap: 28px;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 24px 50px -34px rgba(0,0,0,0.18);
+}
+.recbtn {
+  width: 92px; height: 92px; border-radius: 50%; flex-shrink: 0;
+  border: 2px solid var(--line-strong); background: var(--cream);
+  display: grid; place-items: center; position: relative;
+  transition: transform .12s ease, box-shadow .15s ease, background .15s, border-color .15s;
+}
+.recbtn .core {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--rec);
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+}
+.recbtn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 10px 22px -12px rgba(232,68,58,.55); }
+.recbtn:disabled { opacity: .4; cursor: not-allowed; }
+.recbtn.armed { border-color: var(--peach); background: #FFF3EC; }
+.recbtn.armed .core { border-radius: 50%; background: var(--peach); animation: breathe 1.6s ease-in-out infinite; }
+.recbtn.live { border-color: var(--rec); background: var(--rec-soft); }
+.recbtn.live .core { width: 28px; height: 28px; border-radius: 6px; animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+@keyframes breathe { 0%,100% { transform: scale(1); opacity: .9; } 50% { transform: scale(.82); opacity: .55; } }
+
+.readout { display: flex; flex-direction: column; gap: 2px; min-width: 190px; }
+.readout .time {
+  font-family: var(--mono); font-size: 46px; font-weight: 500;
+  letter-spacing: -0.03em; line-height: 1; color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.readout .time.idle { color: var(--ink-4); }
+.readout .meta { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); letter-spacing: 0.02em; }
+.readout .meta b { color: var(--ink-2); font-weight: 500; }
+
+.meters { flex: 1; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+.meter-row { display: grid; grid-template-columns: 14px 1fr 58px; align-items: center; gap: 10px; }
+.meter-row .lbl { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+.meter-row .val { font-family: var(--mono); font-size: 11px; color: var(--ink-3); text-align: right; font-variant-numeric: tabular-nums; }
+.meter {
+  height: 12px; border-radius: 6px; background: var(--cream-2);
+  border: 1px solid var(--line); position: relative; overflow: hidden;
+}
+.meter .fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+  background: linear-gradient(90deg, var(--meter-lo) 0%, var(--meter-lo) 62%, var(--meter-mid) 82%, var(--meter-hi) 100%);
+  transition: width .05s linear;
+}
+.meter .peak {
+  position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink);
+  left: 0; opacity: 0; transition: left .12s linear;
+}
+.meter .peak.on { opacity: .75; }
+.meter.clip { border-color: var(--rec); box-shadow: 0 0 0 2px var(--rec-soft); }
+
+/* ----- waveform ----- */
+.wave-frame {
+  flex: 1; min-height: 190px; background: var(--paper);
+  border: 1px solid var(--line); border-radius: 16px; position: relative; overflow: hidden;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 24px 50px -34px rgba(0,0,0,0.15);
+}
+.wave-frame canvas { display: block; width: 100%; height: 100%; }
+.wave-empty {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; text-align: center; padding: 40px;
+}
+.wave-empty h3 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.02em; }
+.wave-empty p { margin: 0; color: var(--ink-2); font-size: 14px; max-width: 46ch; }
+.wave-empty .steps {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+  display: flex; flex-direction: column; gap: 5px; text-align: left; margin-top: 4px;
+}
+.wave-empty .steps span::before { content: attr(data-n) "  "; color: var(--peach); font-weight: 600; }
+.wave-empty code { background: var(--cream-2); padding: 1px 6px; border-radius: 4px; color: var(--ink-2); }
+.wave-empty.hidden { display: none; }
+
+.result-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.result-bar .stat {
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+  background: var(--paper); border: 1px solid var(--line);
+  padding: 6px 11px; border-radius: 8px;
+}
+.result-bar .stat b { color: var(--ink); font-weight: 500; }
+.result-bar .spacer { flex: 1; }
+
+/* ============ PANEL ============ */
+.panel {
+  border-left: 1px solid var(--line); background: var(--paper);
+  overflow-y: auto; display: flex; flex-direction: column;
+}
+.sec { border-bottom: 1px solid var(--line); padding: 18px 20px; }
+.sec:last-child { border-bottom: 0; }
+.sec-head { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+.sec-head .n {
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  width: 19px; height: 19px; border-radius: 5px;
+  background: var(--ink); color: var(--cream);
+  display: grid; place-items: center; flex-shrink: 0;
+}
+.sec-head h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.sec-head .hint { font-family: var(--mono); font-size: 10.5px; color: var(--ink-4); margin-left: auto; }
+
+.field { margin-bottom: 12px; }
+.field:last-child { margin-bottom: 0; }
+.field > label {
+  display: block; font-family: var(--mono); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-3); margin-bottom: 5px;
+}
+select, input[type="text"], input[type="number"] {
+  width: 100%; height: 34px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 9px;
+  background: var(--cream); color: var(--ink);
+  font-family: var(--mono); font-size: 12px;
+  appearance: none;
+}
+select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5L6 8l3-3.5' stroke='%238A8276' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; background-size: 12px; padding-right: 28px; }
+select:disabled, input:disabled { opacity: .5; cursor: not-allowed; }
+select:focus, input:focus { outline: none; border-color: var(--ink); }
+
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.seg button {
+  height: 56px; border: 1px solid var(--line-strong); border-radius: 10px;
+  background: var(--cream); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px;
+  transition: background .14s, border-color .14s, color .14s;
+}
+.seg button .t { font-size: 12.5px; font-weight: 600; letter-spacing: -0.01em; }
+.seg button .d { font-family: var(--mono); font-size: 9.5px; color: var(--ink-3); }
+.seg button:hover:not(:disabled) { border-color: var(--ink-3); }
+.seg button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--cream); }
+.seg button[aria-pressed="true"] .d { color: rgba(255,255,255,0.6); }
+.seg button:disabled { opacity: .4; cursor: not-allowed; }
+
+.note {
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.55;
+  color: var(--ink-3); background: var(--cream-2);
+  border-radius: 8px; padding: 9px 11px; margin-top: 12px;
+}
+.note.warn { background: #FFF0EC; color: #A6402F; }
+.note b { color: inherit; font-weight: 600; }
+.note code { background: rgba(0,0,0,0.06); padding: 0 4px; border-radius: 3px; }
+
+.check { display: flex; align-items: center; gap: 10px; padding: 7px 0; cursor: pointer; }
+.check input { position: absolute; opacity: 0; pointer-events: none; }
+.check .box {
+  width: 34px; height: 19px; border-radius: 999px; background: var(--line-strong);
+  position: relative; flex-shrink: 0; transition: background .16s;
+}
+.check .box::after {
+  content: ""; position: absolute; top: 2px; left: 2px;
+  width: 15px; height: 15px; border-radius: 50%; background: var(--paper);
+  transition: transform .16s cubic-bezier(.4,0,.2,1);
+}
+.check input:checked + .box { background: var(--ink); }
+.check input:checked + .box::after { transform: translateX(15px); }
+.check .txt { font-size: 12.5px; }
+.check .txt em { font-style: normal; display: block; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+
+.mode-body { margin-top: 13px; }
+.mode-body.hidden { display: none; }
+
+/* ============ STATUS BAR ============ */
+.statusbar {
+  display: flex; align-items: center; background: var(--cream-2);
+  border-top: 1px solid var(--line); font-family: var(--mono); font-size: 11px;
+  color: var(--ink-3); letter-spacing: 0.02em; padding: 0 18px; gap: 14px;
+}
+.statusbar b { color: var(--ink); font-weight: 500; }
+.statusbar .spacer { flex: 1; }
+.statusbar a { color: var(--ink-2); border-bottom: 1px dotted var(--ink-4); padding-bottom: 1px; }
+.statusbar a:hover { color: var(--ink); }
+.statusbar .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4); }
+.statusbar .pulse.ok   { background: var(--lime); box-shadow: 0 0 0 3px rgba(190,255,108,0.3); }
+.statusbar .pulse.busy { background: var(--rec); box-shadow: 0 0 0 3px var(--rec-soft); }
+.statusbar .pulse.warn { background: var(--peach); box-shadow: 0 0 0 3px rgba(255,159,107,0.3); }
+.statusbar .seg-i { display: inline-flex; align-items: center; gap: 7px; }
+
+@media (max-width: 1000px) {
+  .main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; overflow: auto; }
+  .panel { border-left: 0; border-top: 1px solid var(--line); }
+  .deck { flex-wrap: wrap; gap: 20px; }
+  .meters { flex-basis: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ============ TOP BAR ============ -->
+  <div class="topbar">
+    <a class="brand" href="../../index.html">
+      <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="2"  y="9" width="3" height="6"  rx="1.5" fill="#FF9F6B"/>
+        <rect x="7"  y="5" width="3" height="14" rx="1.5" fill="#BEFF6C"/>
+        <rect x="12" y="2" width="3" height="20" rx="1.5" fill="#FF4F8B"/>
+        <rect x="17" y="7" width="3" height="10" rx="1.5" fill="#6EE5FF"/>
+      </svg>
+      <div class="brand-text">
+        <span class="a">jaeggerr.github.io / tools /</span>
+        <span class="b">SEQTRAK Recorder</span>
+      </div>
+    </a>
+
+    <div class="file-info" id="fileInfo">
+      <span class="dot idle" id="infoDot"></span>
+      <b id="infoName">not connected</b>
+      <span class="sep">·</span>
+      <span id="infoDetail">plug the SEQTRAK in over USB-C, then hit Connect</span>
+    </div>
+
+    <div class="top-actions">
+      <button class="btn icon-only" id="refreshBtn" title="Rescan devices" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>
+      </button>
+      <button class="btn" id="connectBtn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 2v6a6 6 0 0 0 12 0V2"/><path d="M9 2v3"/><path d="M15 2v3"/><path d="M12 14v8"/></svg>
+        <span id="connectLabel">Connect</span>
+      </button>
+      <button class="btn primary" id="downloadBtn" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+        Download .wav <span class="kbd">D</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+
+    <!-- ---- stage ---- -->
+    <div class="stage">
+
+      <div class="stage-header">
+        <div class="stage-title">
+          <h2>Recorder</h2>
+          <span class="num" id="stateChip">idle</span>
+          <span class="sub" id="stageSub">stereo master · 44.1 kHz</span>
+        </div>
+        <div class="stage-toolbar">
+          <button class="toolchip" id="playBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 4l14 8-14 8V4z"/></svg>
+            <b>Play</b>
+          </button>
+          <button class="toolchip" id="clearBtn" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg>
+            <b>Discard</b>
+          </button>
+        </div>
+      </div>
+
+      <div class="deck">
+        <button class="recbtn" id="recBtn" disabled aria-label="Start recording">
+          <span class="core"></span>
+        </button>
+
+        <div class="readout">
+          <div class="time idle" id="timeRead">00:00.0</div>
+          <div class="meta" id="posRead">bar <b>–</b> · <b>–</b> BPM</div>
+          <div class="meta" id="hintRead">connect a device to start</div>
+        </div>
+
+        <div class="meters">
+          <div class="meter-row">
+            <span class="lbl">L</span>
+            <div class="meter" id="meterLWrap"><div class="fill" id="meterL"></div><div class="peak" id="peakL"></div></div>
+            <span class="val" id="dbL">-inf</span>
+          </div>
+          <div class="meter-row">
+            <span class="lbl">R</span>
+            <div class="meter" id="meterRWrap"><div class="fill" id="meterR"></div><div class="peak" id="peakR"></div></div>
+            <span class="val" id="dbR">-inf</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="wave-frame">
+        <canvas id="wave"></canvas>
+        <div class="wave-empty" id="waveEmpty">
+          <h3>Nothing recorded yet</h3>
+          <p>The SEQTRAK is class-compliant over USB, so the browser can capture its stereo master directly — no driver, no DAW.</p>
+          <div class="steps">
+            <span data-n="1.">Connect the SEQTRAK with a <code>USB-C</code> cable</span>
+            <span data-n="2.">Hit <code>Connect</code> and pick it as the audio input</span>
+            <span data-n="3.">Choose a capture mode, then record</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="result-bar" id="resultBar">
+        <span class="stat">length <b id="statLen">–</b></span>
+        <span class="stat">peak <b id="statPeak">–</b></span>
+        <span class="stat">format <b id="statFmt">–</b></span>
+        <span class="stat">size <b id="statSize">–</b></span>
+        <span class="spacer"></span>
+      </div>
+    </div>
+
+    <!-- ---- panel ---- -->
+    <div class="panel">
+
+      <div class="sec">
+        <div class="sec-head">
+          <span class="n">1</span><h3>Devices</h3>
+          <span class="hint" id="midiHint">midi: –</span>
+        </div>
+        <div class="field">
+          <label for="audioIn">Audio input</label>
+          <select id="audioIn" disabled><option>— connect first —</option></select>
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label for="midiOut">MIDI out</label>
+            <select id="midiOut" disabled><option>—</option></select>
+          </div>
+          <div class="field">
+            <label for="midiIn">MIDI in</label>
+            <select id="midiIn" disabled><option>—</option></select>
+          </div>
+        </div>
+        <label class="check">
+          <input type="checkbox" id="monitor">
+          <span class="box"></span>
+          <span class="txt">Monitor<em>hear the input through this computer</em></span>
+        </label>
+        <div class="note" id="deviceNote">
+          Chrome, Edge or Opera on desktop. Safari has no Web MIDI, so modes
+          <b>Bars</b> and <b>Follow</b> need a Chromium browser.
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><span class="n">2</span><h3>Capture mode</h3></div>
+        <div class="seg" id="modeSeg">
+          <button data-mode="manual" aria-pressed="true"><span class="t">Manual</span><span class="d">rec / stop</span></button>
+          <button data-mode="bars"   aria-pressed="false"><span class="t">Bars</span><span class="d">midi start</span></button>
+          <button data-mode="follow" aria-pressed="false"><span class="t">Follow</span><span class="d">midi clock</span></button>
+        </div>
+
+        <div class="mode-body hidden" id="bodyBars">
+          <div class="row3">
+            <div class="field">
+              <label for="bars">Bars</label>
+              <input type="number" id="bars" value="16" min="1" max="512" step="1">
+            </div>
+            <div class="field">
+              <label for="bpm">BPM</label>
+              <input type="number" id="bpm" value="120" min="20" max="300" step="0.1">
+            </div>
+            <div class="field">
+              <label for="tail">Tail s</label>
+              <input type="number" id="tail" value="2" min="0" max="30" step="0.5">
+            </div>
+          </div>
+          <div class="note">
+            Sends <b>MIDI Start</b>, records the requested bars, sends <b>Stop</b>, then keeps
+            <b>Tail</b> seconds so reverb and delay ring out. If the SEQTRAK sends MIDI clock,
+            the bar count is read from it and the BPM field follows automatically.
+          </div>
+        </div>
+
+        <div class="mode-body hidden" id="bodyFollow">
+          <div class="field">
+            <label for="tail2">Tail seconds</label>
+            <input type="number" id="tail2" value="2" min="0" max="30" step="0.5">
+          </div>
+          <div class="note">
+            Arms the recorder and waits. Press <b>play on the SEQTRAK</b> and capture starts on its
+            MIDI Start; it stops when the machine does. Needs MIDI Clock output enabled on the
+            device (Settings → MIDI).
+          </div>
+        </div>
+
+        <div class="mode-body" id="bodyManual">
+          <div class="note">
+            You drive it: hit record, play the machine, hit stop. Works without MIDI —
+            the only mode Safari can run.
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><span class="n">3</span><h3>Export</h3></div>
+        <label class="check">
+          <input type="checkbox" id="trim" checked>
+          <span class="box"></span>
+          <span class="txt">Trim silence<em>cuts dead air at both ends</em></span>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="normalize">
+          <span class="box"></span>
+          <span class="txt">Normalize<em>lift the peak to -1 dBFS</em></span>
+        </label>
+        <div class="row2" style="margin-top:10px">
+          <div class="field">
+            <label for="depth">Bit depth</label>
+            <select id="depth">
+              <option value="24" selected>24-bit</option>
+              <option value="16">16-bit</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fname">File name</label>
+            <input type="text" id="fname" value="seqtrak" spellcheck="false">
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-head"><span class="n">?</span><h3>Not seeing signal</h3></div>
+        <div class="note">
+          <b>Meters flat?</b> The SEQTRAK routes audio over USB only while it is powered on and
+          playing — check the machine's own volume too.<br><br>
+          <b>Mono input?</b> macOS sometimes defaults the device to 1 channel. Open Audio MIDI
+          Setup and set the SEQTRAK input to 2 ch, then rescan.<br><br>
+          <b>Nothing in the list?</b> Some hubs hide USB audio. Try a direct USB-C cable.
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ STATUS BAR ============ -->
+  <div class="statusbar">
+    <span class="seg-i"><span class="pulse" id="statusPulse"></span> <b id="statusText">idle</b></span>
+    <span class="spacer"></span>
+    <span>runs in your tab · no upload · no tracking</span>
+    <span>·</span>
+    <a href="../../index.html">← back to jaeggerr.github.io</a>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+const $ = (id) => document.getElementById(id);
+
+/* ============================================================
+   Recording worklet — buffers 4096 frames per channel, ships
+   them to the main thread, and passes audio through so the
+   monitor gain can make it audible.
+   ============================================================ */
+const WORKLET_SRC = `
+class RecProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.rec = false;
+    this.size = 4096;
+    this.buf = [new Float32Array(this.size), new Float32Array(this.size)];
+    this.idx = 0;
+    this.pL = 0;
+    this.pR = 0;
+    this.tick = 0;
+    this.port.onmessage = (e) => {
+      const cmd = e.data && e.data.cmd;
+      if (cmd === 'start') { this.idx = 0; this.rec = true; }
+      else if (cmd === 'stop') { this.rec = false; this.flush(); }
+    };
+  }
+  flush() {
+    if (this.idx === 0) return;
+    const l = this.buf[0].slice(0, this.idx);
+    const r = this.buf[1].slice(0, this.idx);
+    this.port.postMessage({ type: 'data', l, r }, [l.buffer, r.buffer]);
+    this.idx = 0;
+  }
+  process(inputs, outputs) {
+    const inp = inputs[0];
+    if (!inp || inp.length === 0) return true;
+    const L = inp[0];
+    const R = inp.length > 1 ? inp[1] : inp[0];
+    const n = L.length;
+
+    for (let i = 0; i < n; i++) {
+      const a = L[i] < 0 ? -L[i] : L[i];
+      const b = R[i] < 0 ? -R[i] : R[i];
+      if (a > this.pL) this.pL = a;
+      if (b > this.pR) this.pR = b;
+    }
+
+    if (this.rec) {
+      let off = 0, rem = n;
+      while (rem > 0) {
+        const space = this.size - this.idx;
+        const take = rem < space ? rem : space;
+        this.buf[0].set(L.subarray(off, off + take), this.idx);
+        this.buf[1].set(R.subarray(off, off + take), this.idx);
+        this.idx += take; off += take; rem -= take;
+        if (this.idx === this.size) this.flush();
+      }
+    }
+
+    const out = outputs[0];
+    if (out && out.length) {
+      out[0].set(L);
+      if (out.length > 1) out[1].set(R);
+    }
+
+    if (++this.tick >= 8) {
+      this.tick = 0;
+      this.port.postMessage({ type: 'meter', l: this.pL, r: this.pR });
+      this.pL = 0; this.pR = 0;
+    }
+    return true;
+  }
+}
+registerProcessor('rec-processor', RecProcessor);
+`;
+
+/* ============================================================
+   State
+   ============================================================ */
+const S = {
+  ctx: null, stream: null, src: null, node: null, monitorGain: null,
+  midi: null, midiOut: null, midiIn: null, sawClock: false,
+  phase: 'idle',            // idle | armed | recording
+  chunks: [], frames: 0,
+  t0: 0, uiTimer: null, safetyTimer: null,
+  pulses: 0, pulseTarget: 0, lastClockAt: 0, clockDeltas: [], bpm: null,
+  finishing: false,
+  result: null,             // { l, r, sampleRate }
+  player: null, playStart: 0, playRaf: 0,
+  peakHold: [0, 0], peakAt: [0, 0],
+  watchingDevices: false, defaultNote: '',
+};
+
+const MODES = ['manual', 'bars', 'follow'];
+let mode = 'manual';
+
+/* ============================================================
+   Small helpers
+   ============================================================ */
+function status(text, kind) {
+  $('statusText').textContent = text;
+  $('statusPulse').className = 'pulse' + (kind ? ' ' + kind : '');
+}
+function info(name, detail, kind) {
+  $('infoName').textContent = name;
+  if (detail !== undefined) $('infoDetail').textContent = detail;
+  $('infoDot').className = 'dot' + (kind ? ' ' + kind : '');
+}
+function chip(text, cls) {
+  const el = $('stateChip');
+  el.textContent = text;
+  el.className = 'num' + (cls ? ' ' + cls : '');
+}
+function dbfs(v) {
+  if (!v) return '-inf';
+  const d = 20 * Math.log10(v);
+  return (d > -0.05 && d <= 0 ? '0.0' : d.toFixed(1));
+}
+function fmtTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return String(m).padStart(2, '0') + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+}
+function fmtBytes(n) {
+  return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.round(n / 1024) + ' KB';
+}
+
+/* ============================================================
+   Connect: permission -> device list -> stream -> MIDI
+   ============================================================ */
+async function connect() {
+  if (!navigator.mediaDevices || !window.AudioWorkletNode) {
+    info('unsupported browser', 'needs Web Audio + AudioWorklet', 'err');
+    status('unsupported browser', 'warn');
+    return;
+  }
+  if (!window.isSecureContext) {
+    info('insecure context', 'audio capture needs https:// or localhost', 'err');
+    status('needs a secure context', 'warn');
+    return;
+  }
+
+  $('connectBtn').disabled = true;
+  $('connectLabel').textContent = 'Connecting…';
+  status('requesting audio access…', 'warn');
+
+  try {
+    const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+    probe.getTracks().forEach((t) => t.stop());
+  } catch (err) {
+    info('access denied', String(err.name || err), 'err');
+    status('microphone/input permission denied', 'warn');
+    $('connectBtn').disabled = false;
+    $('connectLabel').textContent = 'Connect';
+    return;
+  }
+
+  await listAudioInputs(true);
+  $('audioIn').disabled = false;
+  $('refreshBtn').disabled = false;
+  $('connectLabel').textContent = 'Reconnect';
+  $('connectBtn').disabled = false;
+
+  try {
+    await openStream($('audioIn').value);
+  } catch (err) {
+    info('could not open device', String(err.name || err), 'err');
+    status('could not open the selected input', 'warn');
+  }
+
+  await initMidi();
+
+  if (!S.watchingDevices) {
+    S.watchingDevices = true;
+    navigator.mediaDevices.addEventListener('devicechange', () => listAudioInputs(false));
+  }
+}
+
+function looksLikeSeqtrak(label) {
+  return /seqtrak/i.test(label || '');
+}
+
+async function listAudioInputs(autoPick) {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const ins = devices.filter((d) => d.kind === 'audioinput');
+  const sel = $('audioIn');
+  const previous = sel.value;
+  sel.innerHTML = '';
+  ins.forEach((d, i) => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || ('Input ' + (i + 1));
+    sel.appendChild(o);
+  });
+  if (!ins.length) {
+    sel.innerHTML = '<option>— no audio input found —</option>';
+    return;
+  }
+  const seq = ins.find((d) => looksLikeSeqtrak(d.label));
+  if (autoPick && seq) sel.value = seq.deviceId;
+  else if (previous && ins.some((d) => d.deviceId === previous)) sel.value = previous;
+}
+
+async function openStream(deviceId) {
+  if (S.stream) S.stream.getTracks().forEach((t) => t.stop());
+
+  S.stream = await navigator.mediaDevices.getUserMedia({
+    audio: {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      channelCount: { ideal: 2 },
+      sampleRate: { ideal: 44100 },
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+    },
+    video: false,
+  });
+
+  if (!S.ctx) {
+    try {
+      S.ctx = new AudioContext({ sampleRate: 44100, latencyHint: 'interactive' });
+    } catch (e) {
+      S.ctx = new AudioContext({ latencyHint: 'interactive' });
+    }
+    const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'application/javascript' }));
+    await S.ctx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+
+    S.node = new AudioWorkletNode(S.ctx, 'rec-processor', {
+      numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2],
+    });
+    S.node.port.onmessage = onWorkletMessage;
+    S.monitorGain = S.ctx.createGain();
+    S.monitorGain.gain.value = $('monitor').checked ? 1 : 0;
+    S.node.connect(S.monitorGain).connect(S.ctx.destination);
+  }
+  await S.ctx.resume();
+
+  if (S.src) S.src.disconnect();
+  S.src = S.ctx.createMediaStreamSource(S.stream);
+  S.src.connect(S.node);
+
+  const track = S.stream.getAudioTracks()[0];
+  const st = track.getSettings ? track.getSettings() : {};
+  const ch = st.channelCount || 2;
+  const sr = S.ctx.sampleRate;
+  const label = track.label || 'input';
+
+  info(label, ch + ' ch · ' + (sr / 1000).toFixed(1) + ' kHz', looksLikeSeqtrak(label) ? '' : 'idle');
+  $('stageSub').textContent = (ch > 1 ? 'stereo' : 'mono') + ' · ' + (sr / 1000).toFixed(1) + ' kHz';
+  $('recBtn').disabled = false;
+  $('hintRead').textContent = 'ready';
+  status('input open — ' + label, 'ok');
+
+  const note = $('deviceNote');
+  if (!S.defaultNote) S.defaultNote = note.innerHTML;
+  if (ch < 2) {
+    note.classList.add('warn');
+    note.innerHTML = '<b>Mono input.</b> The OS is handing over 1 channel. On macOS open ' +
+      'Audio MIDI Setup and set the SEQTRAK input format to 2 ch, then rescan.';
+  } else {
+    note.classList.remove('warn');
+    note.innerHTML = S.defaultNote;
+  }
+  if (Math.abs(sr - 44100) > 1) {
+    status('running at ' + sr + ' Hz — the SEQTRAK is 44.1 kHz', 'warn');
+  }
+}
+
+/* ============================================================
+   MIDI
+   ============================================================ */
+async function initMidi() {
+  if (!navigator.requestMIDIAccess) {
+    $('midiHint').textContent = 'midi: unsupported';
+    setModeAvailability(false);
+    return;
+  }
+  try {
+    S.midi = await navigator.requestMIDIAccess({ sysex: false });
+  } catch (err) {
+    $('midiHint').textContent = 'midi: denied';
+    setModeAvailability(false);
+    return;
+  }
+  S.midi.onstatechange = refreshMidiPorts;
+  refreshMidiPorts();
+  setModeAvailability(true);
+}
+
+function refreshMidiPorts() {
+  const outs = Array.from(S.midi.outputs.values());
+  const ins = Array.from(S.midi.inputs.values());
+
+  fillPorts($('midiOut'), outs, 'no MIDI output');
+  fillPorts($('midiIn'), ins, 'no MIDI input');
+  $('midiOut').disabled = outs.length === 0;
+  $('midiIn').disabled = ins.length === 0;
+
+  $('midiHint').textContent = 'midi: ' + outs.length + ' out / ' + ins.length + ' in';
+  bindMidiPorts();
+}
+
+function fillPorts(sel, ports, emptyLabel) {
+  const previous = sel.value;
+  sel.innerHTML = '';
+  if (!ports.length) {
+    sel.innerHTML = '<option value="">— ' + emptyLabel + ' —</option>';
+    return;
+  }
+  ports.forEach((p) => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.appendChild(o);
+  });
+  const seq = ports.find((p) => looksLikeSeqtrak(p.name));
+  if (seq) sel.value = seq.id;
+  else if (previous && ports.some((p) => p.id === previous)) sel.value = previous;
+}
+
+function bindMidiPorts() {
+  if (!S.midi) return;
+  S.midiOut = S.midi.outputs.get($('midiOut').value) || null;
+  if (S.midiIn) S.midiIn.onmidimessage = null;
+  S.midiIn = S.midi.inputs.get($('midiIn').value) || null;
+  if (S.midiIn) {
+    S.midiIn.open().catch(() => {});
+    S.midiIn.onmidimessage = onMidiMessage;
+  }
+}
+
+function sendMidi(bytes) {
+  if (S.midiOut) { try { S.midiOut.send(bytes); } catch (e) {} }
+}
+
+function onMidiMessage(e) {
+  const b = e.data[0];
+  if (b === 0xF8) { onClock(); return; }
+  if (b === 0xFA || b === 0xFB) {          // Start / Continue
+    S.pulses = 0;
+    if (mode === 'follow' && S.phase === 'armed') startRec();
+    return;
+  }
+  if (b === 0xFC) {                         // Stop
+    if (mode === 'follow' && S.phase === 'recording') finish();
+  }
+}
+
+function onClock() {
+  S.sawClock = true;
+  const now = performance.now();
+  if (S.lastClockAt) {
+    const dt = now - S.lastClockAt;
+    if (dt > 1 && dt < 250) {
+      S.clockDeltas.push(dt);
+      if (S.clockDeltas.length > 48) S.clockDeltas.shift();
+      const avg = S.clockDeltas.reduce((a, b) => a + b, 0) / S.clockDeltas.length;
+      S.bpm = 60000 / (avg * 24);
+      if (mode === 'bars' && document.activeElement !== $('bpm')) {
+        $('bpm').value = S.bpm.toFixed(1);
+      }
+    }
+  }
+  S.lastClockAt = now;
+
+  if (S.phase === 'recording') {
+    S.pulses++;
+    if (S.pulseTarget && S.pulses >= S.pulseTarget) finish();
+  }
+}
+
+function setModeAvailability(midiOk) {
+  document.querySelectorAll('#modeSeg button').forEach((b) => {
+    if (b.dataset.mode !== 'manual') b.disabled = !midiOk;
+  });
+  if (!midiOk && mode !== 'manual') setMode('manual');
+}
+
+/* ============================================================
+   Transport
+   ============================================================ */
+function onPrimary() {
+  if (S.phase === 'recording') {
+    if (mode === 'bars') { S.pulseTarget = 0; finish(); }
+    else if (mode === 'follow') finish();
+    else stopRec();
+    return;
+  }
+  if (S.phase === 'armed') { disarm(); return; }
+
+  if (mode === 'manual') startRec();
+  else if (mode === 'bars') runBars();
+  else arm();
+}
+
+function startRec() {
+  if (S.phase === 'recording' || !S.node) return;
+  discard(true);
+  S.chunks = []; S.frames = 0; S.finishing = false;
+  S.phase = 'recording';
+  S.node.port.postMessage({ cmd: 'start' });
+  S.t0 = performance.now();
+  S.uiTimer = setInterval(tickUI, 80);
+
+  $('recBtn').className = 'recbtn live';
+  $('recBtn').setAttribute('aria-label', 'Stop recording');
+  $('timeRead').className = 'time';
+  chip('recording', 'live');
+  $('hintRead').textContent = mode === 'manual' ? 'space or click to stop' : 'stopping automatically';
+  status('recording', 'busy');
+}
+
+function stopRec() {
+  if (S.phase !== 'recording') return;
+  S.phase = 'idle';
+  S.node.port.postMessage({ cmd: 'stop' });
+  clearInterval(S.uiTimer);
+  clearTimeout(S.safetyTimer);
+  S.pulseTarget = 0;
+  $('recBtn').className = 'recbtn';
+  $('recBtn').setAttribute('aria-label', 'Start recording');
+  chip('rendering', '');
+  status('assembling wav…', 'warn');
+  setTimeout(assemble, 140);          // let the final flush land
+}
+
+/* Bars mode: start the machine, count, stop it, keep the tail. */
+function runBars() {
+  if (!S.midiOut) { status('pick a MIDI output first', 'warn'); return; }
+  const bars = Math.max(1, parseInt($('bars').value, 10) || 16);
+  const bpm = Math.max(20, parseFloat($('bpm').value) || 120);
+
+  startRec();
+  S.pulses = 0;
+  S.pulseTarget = bars * 96;           // 24 ppqn * 4 beats
+  sendMidi([0xFA]);
+
+  // Wall-clock fallback in case the machine never sends clock.
+  const ms = (bars * 4 * 60000) / bpm;
+  S.safetyTimer = setTimeout(finish, ms + 400);
+  $('hintRead').textContent = bars + ' bars @ ' + bpm.toFixed(1) + ' BPM';
+}
+
+/* Common tail-out path for the MIDI-driven modes. */
+function finish() {
+  if (S.finishing || S.phase !== 'recording') return;
+  S.finishing = true;
+  S.pulseTarget = 0;
+  clearTimeout(S.safetyTimer);
+  if (mode === 'bars') sendMidi([0xFC]);
+  const tail = parseFloat(mode === 'follow' ? $('tail2').value : $('tail').value) || 0;
+  $('hintRead').textContent = tail > 0 ? 'tail…' : 'stopping';
+  setTimeout(stopRec, tail * 1000);
+}
+
+function arm() {
+  if (!S.midiIn) { status('pick a MIDI input first', 'warn'); return; }
+  S.phase = 'armed';
+  $('recBtn').className = 'recbtn armed';
+  chip('armed', 'armed');
+  $('hintRead').textContent = 'press play on the SEQTRAK';
+  status('armed — waiting for MIDI start', 'warn');
+}
+
+function disarm() {
+  S.phase = 'idle';
+  $('recBtn').className = 'recbtn';
+  chip('idle', '');
+  $('hintRead').textContent = 'ready';
+  status('idle', 'ok');
+}
+
+function tickUI() {
+  const sec = (performance.now() - S.t0) / 1000;
+  $('timeRead').textContent = fmtTime(sec);
+  if (S.pulses > 0) {
+    const beat = Math.floor(S.pulses / 24);
+    $('posRead').innerHTML = 'bar <b>' + (Math.floor(beat / 4) + 1) + '.' + ((beat % 4) + 1) + '</b> · <b>' +
+      (S.bpm ? S.bpm.toFixed(1) : '–') + '</b> BPM';
+  } else if (S.bpm) {
+    $('posRead').innerHTML = 'bar <b>–</b> · <b>' + S.bpm.toFixed(1) + '</b> BPM';
+  }
+}
+
+/* ============================================================
+   Worklet messages
+   ============================================================ */
+function onWorkletMessage(e) {
+  const m = e.data;
+  if (m.type === 'meter') { drawMeters(m.l, m.r); return; }
+  if (m.type === 'data') {
+    S.chunks.push([m.l, m.r]);
+    S.frames += m.l.length;
+  }
+}
+
+function drawMeters(l, r) {
+  const now = performance.now();
+  const vals = [l, r];
+  ['L', 'R'].forEach((side, i) => {
+    const v = vals[i];
+    const pct = Math.min(100, Math.sqrt(v) * 100);
+    $('meter' + side).style.width = pct + '%';
+    if (v >= S.peakHold[i] || now - S.peakAt[i] > 1200) {
+      S.peakHold[i] = v; S.peakAt[i] = now;
+    }
+    const peakEl = $('peak' + side);
+    peakEl.style.left = Math.min(99, Math.sqrt(S.peakHold[i]) * 100) + '%';
+    peakEl.className = 'peak' + (S.peakHold[i] > 0.001 ? ' on' : '');
+    $('db' + side).textContent = dbfs(S.peakHold[i]);
+    $('meter' + side + 'Wrap').classList.toggle('clip', v >= 0.999);
+  });
+}
+
+/* ============================================================
+   Assemble, process, draw
+   ============================================================ */
+function assemble() {
+  if (!S.frames) {
+    chip('idle', '');
+    status('nothing captured — is the machine playing?', 'warn');
+    $('hintRead').textContent = 'no audio captured';
+    return;
+  }
+  const l = new Float32Array(S.frames);
+  const r = new Float32Array(S.frames);
+  let off = 0;
+  for (const [cl, cr] of S.chunks) {
+    l.set(cl, off); r.set(cr, off); off += cl.length;
+  }
+  S.chunks = [];
+  S.result = { l, r, sampleRate: S.ctx.sampleRate };
+  refreshResult();
+  chip('captured', 'done');
+  status('captured ' + fmtTime(S.frames / S.ctx.sampleRate), 'ok');
+  $('hintRead').textContent = 'ready';
+}
+
+/* Applies trim + normalize, returns a fresh pair of channels. */
+function processed() {
+  if (!S.result) return null;
+  const sr = S.result.sampleRate;
+  let l = S.result.l, r = S.result.r;
+
+  if ($('trim').checked) {
+    const thr = 0.0015;                       // ~ -56 dBFS
+    let a = 0, b = l.length - 1;
+    while (a < l.length && Math.abs(l[a]) < thr && Math.abs(r[a]) < thr) a++;
+    while (b > a && Math.abs(l[b]) < thr && Math.abs(r[b]) < thr) b--;
+    if (a < b) {
+      a = Math.max(0, a - Math.round(sr * 0.02));
+      b = Math.min(l.length - 1, b + Math.round(sr * 0.05));
+      l = l.subarray(a, b + 1);
+      r = r.subarray(a, b + 1);
+    }
+  }
+
+  if ($('normalize').checked) {
+    let peak = 0;
+    for (let i = 0; i < l.length; i++) {
+      const x = Math.abs(l[i]), y = Math.abs(r[i]);
+      if (x > peak) peak = x;
+      if (y > peak) peak = y;
+    }
+    if (peak > 0) {
+      const g = Math.pow(10, -1 / 20) / peak;
+      const nl = new Float32Array(l.length), nr = new Float32Array(r.length);
+      for (let i = 0; i < l.length; i++) { nl[i] = l[i] * g; nr[i] = r[i] * g; }
+      l = nl; r = nr;
+    }
+  }
+  return { l, r, sampleRate: sr };
+}
+
+function refreshResult() {
+  const p = processed();
+  const has = !!(p && p.l.length);
+  $('downloadBtn').disabled = !has;
+  $('playBtn').disabled = !has;
+  $('clearBtn').disabled = !has;
+  $('waveEmpty').classList.toggle('hidden', has);
+  if (!has) {
+    $('statLen').textContent = $('statPeak').textContent = '–';
+    $('statFmt').textContent = $('statSize').textContent = '–';
+    clearWave();
+    return;
+  }
+  let peak = 0;
+  for (let i = 0; i < p.l.length; i++) {
+    const x = Math.abs(p.l[i]), y = Math.abs(p.r[i]);
+    if (x > peak) peak = x;
+    if (y > peak) peak = y;
+  }
+  const depth = parseInt($('depth').value, 10);
+  $('statLen').textContent = fmtTime(p.l.length / p.sampleRate);
+  $('statPeak').textContent = dbfs(peak) + ' dBFS';
+  $('statFmt').textContent = depth + '-bit · ' + (p.sampleRate / 1000).toFixed(1) + ' kHz';
+  $('statSize').textContent = fmtBytes(44 + p.l.length * 2 * (depth / 8));
+  drawWave(p);
+}
+
+function discard(silent) {
+  stopPlayback();
+  S.result = null;
+  refreshResult();
+  if (!silent) { chip('idle', ''); status('discarded', 'ok'); }
+}
+
+/* ============================================================
+   Waveform
+   ============================================================ */
+function canvasSetup() {
+  const c = $('wave');
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = Math.max(1, Math.round(w * dpr));
+  c.height = Math.max(1, Math.round(h * dpr));
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w, h };
+}
+
+function clearWave() {
+  const { g, w, h } = canvasSetup();
+  g.clearRect(0, 0, w, h);
+}
+
+function drawWave(p, playheadSec) {
+  const { g, w, h } = canvasSetup();
+  g.clearRect(0, 0, w, h);
+  if (!p || !p.l.length) return;
+
+  const css = getComputedStyle(document.documentElement);
+  const peach = css.getPropertyValue('--peach').trim() || '#FF8A5B';
+  const line = css.getPropertyValue('--line').trim() || '#E6DFD3';
+  const ink4 = css.getPropertyValue('--ink-4').trim() || '#B8B0A2';
+
+  const padY = 18;
+  const mid = h / 2;
+  const amp = (h - padY * 2) / 2;
+
+  g.strokeStyle = line;
+  g.lineWidth = 1;
+  [0.5, 1].forEach((f) => {
+    [mid - amp * f, mid + amp * f].forEach((y) => {
+      g.beginPath(); g.moveTo(0, Math.round(y) + 0.5); g.lineTo(w, Math.round(y) + 0.5); g.stroke();
+    });
+  });
+  g.strokeStyle = ink4;
+  g.beginPath(); g.moveTo(0, Math.round(mid) + 0.5); g.lineTo(w, Math.round(mid) + 0.5); g.stroke();
+
+  const n = p.l.length;
+  const per = n / w;
+  g.fillStyle = peach;
+  for (let x = 0; x < w; x++) {
+    const s = Math.floor(x * per);
+    const e = Math.min(n, Math.floor((x + 1) * per));
+    let lo = 0, hi = 0;
+    for (let i = s; i < e; i++) {
+      const v = (p.l[i] + p.r[i]) * 0.5;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+    const y1 = mid - hi * amp;
+    const y2 = mid - lo * amp;
+    g.fillRect(x, y1, 1, Math.max(1, y2 - y1));
+  }
+
+  if (playheadSec != null) {
+    const x = (playheadSec * p.sampleRate / n) * w;
+    g.strokeStyle = '#1A1714';
+    g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke();
+  }
+}
+
+/* ============================================================
+   Playback
+   ============================================================ */
+function togglePlayback() {
+  if (S.player) { stopPlayback(); return; }
+  const p = processed();
+  if (!p || !p.l.length || !S.ctx) return;
+
+  const buf = S.ctx.createBuffer(2, p.l.length, p.sampleRate);
+  buf.copyToChannel(p.l, 0);
+  buf.copyToChannel(p.r, 1);
+  const node = S.ctx.createBufferSource();
+  node.buffer = buf;
+  node.connect(S.ctx.destination);
+  node.onended = () => { if (S.player === node) stopPlayback(); };
+  node.start();
+
+  S.player = node;
+  S.playStart = S.ctx.currentTime;
+  $('playBtn').classList.add('active');
+  $('playBtn').querySelector('b').textContent = 'Stop';
+
+  const step = () => {
+    if (!S.player) return;
+    drawWave(p, S.ctx.currentTime - S.playStart);
+    S.playRaf = requestAnimationFrame(step);
+  };
+  step();
+}
+
+function stopPlayback() {
+  if (S.player) { try { S.player.stop(); } catch (e) {} S.player.disconnect(); }
+  S.player = null;
+  cancelAnimationFrame(S.playRaf);
+  $('playBtn').classList.remove('active');
+  const b = $('playBtn').querySelector('b');
+  if (b) b.textContent = 'Play';
+  const p = processed();
+  if (p) drawWave(p);
+}
+
+/* ============================================================
+   WAV encoding
+   ============================================================ */
+function encodeWav(p, depth) {
+  const nch = 2;
+  const n = p.l.length;
+  const bytes = depth / 8;
+  const dataSize = n * nch * bytes;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const dv = new DataView(ab);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(off + i, s.charCodeAt(i)); };
+
+  str(0, 'RIFF');
+  dv.setUint32(4, 36 + dataSize, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  dv.setUint32(16, 16, true);
+  dv.setUint16(20, 1, true);                              // PCM
+  dv.setUint16(22, nch, true);
+  dv.setUint32(24, p.sampleRate, true);
+  dv.setUint32(28, p.sampleRate * nch * bytes, true);
+  dv.setUint16(32, nch * bytes, true);
+  dv.setUint16(34, depth, true);
+  str(36, 'data');
+  dv.setUint32(40, dataSize, true);
+
+  let o = 44;
+  const chans = [p.l, p.r];
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < nch; c++) {
+      let s = chans[c][i];
+      s = s < -1 ? -1 : s > 1 ? 1 : s;
+      if (depth === 16) {
+        dv.setInt16(o, Math.round(s < 0 ? s * 0x8000 : s * 0x7FFF), true);
+        o += 2;
+      } else {
+        const v = Math.round(s < 0 ? s * 0x800000 : s * 0x7FFFFF);
+        dv.setUint8(o, v & 0xFF);
+        dv.setUint8(o + 1, (v >> 8) & 0xFF);
+        dv.setUint8(o + 2, (v >> 16) & 0xFF);
+        o += 3;
+      }
+    }
+  }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+function download() {
+  const p = processed();
+  if (!p || !p.l.length) return;
+  const depth = parseInt($('depth').value, 10);
+  status('encoding wav…', 'warn');
+
+  setTimeout(() => {
+    const blob = encodeWav(p, depth);
+    const d = new Date();
+    const pad = (x) => String(x).padStart(2, '0');
+    const stamp = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' +
+                  pad(d.getHours()) + pad(d.getMinutes());
+    const base = ($('fname').value || 'seqtrak').replace(/[^\w\-]+/g, '-').replace(/^-+|-+$/g, '') || 'seqtrak';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = base + '-' + stamp + '.wav';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    status('saved ' + a.download + ' · ' + fmtBytes(blob.size), 'ok');
+  }, 10);
+}
+
+/* ============================================================
+   Mode switching + wiring
+   ============================================================ */
+function setMode(m) {
+  mode = m;
+  document.querySelectorAll('#modeSeg button').forEach((b) => {
+    b.setAttribute('aria-pressed', b.dataset.mode === m ? 'true' : 'false');
+  });
+  $('bodyManual').classList.toggle('hidden', m !== 'manual');
+  $('bodyBars').classList.toggle('hidden', m !== 'bars');
+  $('bodyFollow').classList.toggle('hidden', m !== 'follow');
+  if (S.phase === 'armed') disarm();
+}
+
+$('connectBtn').addEventListener('click', connect);
+$('refreshBtn').addEventListener('click', async () => {
+  await listAudioInputs(false);
+  if (S.midi) refreshMidiPorts();
+  status('devices rescanned', 'ok');
+});
+$('audioIn').addEventListener('change', async () => {
+  try { await openStream($('audioIn').value); }
+  catch (err) { info('could not open device', String(err.name || err), 'err'); status('could not open the input', 'warn'); }
+});
+$('midiOut').addEventListener('change', bindMidiPorts);
+$('midiIn').addEventListener('change', bindMidiPorts);
+$('monitor').addEventListener('change', (e) => {
+  if (S.monitorGain) S.monitorGain.gain.value = e.target.checked ? 1 : 0;
+});
+$('modeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (b && !b.disabled) setMode(b.dataset.mode);
+});
+$('recBtn').addEventListener('click', onPrimary);
+$('playBtn').addEventListener('click', togglePlayback);
+$('clearBtn').addEventListener('click', () => discard(false));
+$('downloadBtn').addEventListener('click', download);
+['trim', 'normalize', 'depth'].forEach((id) => {
+  $(id).addEventListener('change', () => { stopPlayback(); refreshResult(); });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(e.target.tagName)) return;
+  if (e.code === 'Space') { e.preventDefault(); if (!$('recBtn').disabled) onPrimary(); }
+  else if (e.key === 'd' || e.key === 'D') { if (!$('downloadBtn').disabled) download(); }
+  else if (e.key === 'p' || e.key === 'P') { if (!$('playBtn').disabled) togglePlayback(); }
+});
+
+let resizeRaf = 0;
+window.addEventListener('resize', () => {
+  cancelAnimationFrame(resizeRaf);
+  resizeRaf = requestAnimationFrame(() => { const p = processed(); if (p) drawWave(p); else clearWave(); });
+});
+
+setMode('manual');
+setModeAvailability(!!navigator.requestMIDIAccess);
+clearWave();
+status('idle');
+</script>
+
+</body>
+</html>

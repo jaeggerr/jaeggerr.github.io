@@ -356,6 +356,7 @@ footer a:hover { color: var(--violet); border-color: var(--violet); }
     <button class="chip" data-tag="all" aria-pressed="true">All</button>
     <button class="chip" data-tag="image" aria-pressed="false">image</button>
     <button class="chip" data-tag="design" aria-pressed="false">design</button>
+    <button class="chip" data-tag="audio" aria-pressed="false">audio</button>
   </nav>
 
   <main class="grid" id="grid">
@@ -388,6 +389,28 @@ footer a:hover { color: var(--violet); border-color: var(--violet); }
         <circle cx="60" cy="10" r="4.5" fill="white" stroke="currentColor" stroke-width="1.5"/>
         <circle cx="150" cy="120" r="4.5" fill="white" stroke="currentColor" stroke-width="1.5"/>
       </svg>
+    </a>
+
+    <a class="card" data-accent="peach" data-tags="audio,midi" href="./tools/seqtrak-recorder/">
+      <div>
+        <div class="card-glyph card-glyph--svg">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="2"  y="9" width="3" height="6"  rx="1.5" fill="#FF9F6B"/>
+            <rect x="7"  y="5" width="3" height="14" rx="1.5" fill="#BEFF6C"/>
+            <rect x="12" y="2" width="3" height="20" rx="1.5" fill="#FF4F8B"/>
+            <rect x="17" y="7" width="3" height="10" rx="1.5" fill="#6EE5FF"/>
+          </svg>
+        </div>
+        <h2 class="card-title">seqtrak recorder</h2>
+        <p class="card-desc">Plug a Yamaha SEQTRAK into USB, get a WAV. The official app can’t export audio at all — this records the master, starts and stops the machine over MIDI, and trims to the bar.</p>
+      </div>
+      <div class="card-foot">
+        <div class="card-tags">
+          <span class="card-tag">audio</span>
+          <span class="card-tag">midi</span>
+        </div>
+        <div class="card-arrow">→</div>
+      </div>
     </a>
 
     <a class="card" data-accent="violet" data-tags="image" href="./tools/texture-unpacker/">
